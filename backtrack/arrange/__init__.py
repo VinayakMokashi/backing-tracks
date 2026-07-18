@@ -15,9 +15,53 @@ import pretty_midi
 from .. import chords
 from ..model import ParsedChord, RenderOptions, Song
 from . import drums, guitar, piano, patterns
+from .voicings import OPEN_BY_KEY
 
 _STICK = 37  # GM side stick, used for the count-in
 _SEED = 1337  # fixed so a given (song, options) always renders identically
+
+
+def _shape_keys(song: Song) -> list[tuple[int, str]]:
+    """Distinct (root_pc, quality) pairs across the whole song."""
+    out: list[tuple[int, str]] = []
+    seen: set[tuple[int, str]] = set()
+    for section in song.sections:
+        for ev in section.chords:
+            parsed = chords.parse_symbol(ev.symbol)
+            if parsed is None or parsed.is_rest:
+                continue
+            key = (parsed.root_pc, parsed.quality)
+            if key not in seen:
+                seen.add(key)
+                out.append(key)
+    return out
+
+
+def choose_auto_capo(song: Song, transpose: int) -> int:
+    """Pick the capo (0-7) whose resulting shapes hit the open-chord dictionary
+    most often — the fingering a guitarist would actually recognise."""
+    total = song.capo + transpose
+    keys = _shape_keys(song)
+    if not keys:
+        return max(0, min(7, total))
+    best_capo, best_score = 0, -1
+    for capo in range(8):
+        shift = total - capo
+        score = sum((( r + shift) % 12, q) in OPEN_BY_KEY for r, q in keys)
+        if score > best_score:
+            best_capo, best_score = capo, score
+    return best_capo
+
+
+def plan_capo(song: Song, transpose: int, capo_mode: str) -> tuple[int, int]:
+    """Resolve (symbol_shift, capo_out) for any mode, including 'auto'.
+
+    Sum is always song.capo + transpose, so sounding pitch stays invariant.
+    """
+    if capo_mode == "auto":
+        capo_out = choose_auto_capo(song, transpose)
+        return song.capo + transpose - capo_out, capo_out
+    return resolve_capo(song.capo, transpose, capo_mode)
 
 
 def resolve_capo(capo: int, transpose: int, capo_mode: str) -> tuple[int, int]:
@@ -97,7 +141,7 @@ def arrange(song: Song, opts: RenderOptions) -> pretty_midi.PrettyMIDI:
     slots_per_bar = int(round(numerator * slots_per_beat))
     rng = random.Random(_SEED)
 
-    symbol_shift, capo_out = resolve_capo(song.capo, opts.transpose, opts.capo_mode)
+    symbol_shift, capo_out = plan_capo(song, opts.transpose, opts.capo_mode)
 
     spans, total_bars, section_start_bars = _timeline(song, slots_per_beat)
     shape_spans = [(s, e, _shift(c, symbol_shift)) for s, e, c in spans]

@@ -19,7 +19,7 @@ import config
 from dataclasses import asdict
 
 from . import chords, render, sheet_parser, store
-from .arrange import arrange, resolve_capo
+from .arrange import arrange, plan_capo
 from .model import ChordEvent, RenderOptions, Section, options_hash, song_to_dict
 from .sources import RawSheet, SourceError, get_sheet, search
 
@@ -210,7 +210,7 @@ def song_sheet(song_id: str, transpose: int = 0, capo_mode: str = "keep"):
     if song is None:
         return _error(404, "not_found", f"No song {song_id!r}.",
                       "Create it first via the Find box.")
-    symbol_shift, capo_out = resolve_capo(song.capo, transpose, capo_mode)
+    symbol_shift, capo_out = plan_capo(song, transpose, capo_mode)
     shape_key = chords.transpose_symbol(song.key, symbol_shift)
     sounding = _spell_key(song.key, symbol_shift + capo_out)
     prefer_flats = _key_prefers_flats(song.key, symbol_shift + capo_out)
@@ -243,6 +243,7 @@ def render_song(song_id: str, req: RenderRequest):
             result = render.render(arrange(song, opts), song_id, ohash)
             seconds = result.seconds
             mp3_exists = result.mp3_path is not None
+            store.prune_renders(song_id)
 
     sounding_key = _spell_key(song.key, song.capo + opts.transpose)
 

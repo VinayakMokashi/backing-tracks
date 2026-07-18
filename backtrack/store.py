@@ -72,6 +72,18 @@ def load_song(song_id: str) -> Song | None:
         return None
 
 
+def prune_renders(song_id: str, keep: int = 20) -> None:
+    """Keep only the newest `keep` render sets (mid/wav/mp3) for a song."""
+    render_dir = config.RENDERS_DIR / song_id
+    if not render_dir.exists():
+        return
+    wavs = sorted(render_dir.glob("*.wav"), key=lambda p: p.stat().st_mtime,
+                  reverse=True)
+    for stale in wavs[keep:]:
+        for ext in (".wav", ".mid", ".mp3"):
+            stale.with_suffix(ext).unlink(missing_ok=True)
+
+
 def list_songs() -> list[dict]:
     out = []
     for path in sorted(config.SONGS_DIR.glob("*.json")):

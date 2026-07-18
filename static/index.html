@@ -8,34 +8,125 @@
 </head>
 <body>
 <main>
-  <h1>Backing Tracks</h1>
-  <p id="health" class="muted">Checking audio toolchain…</p>
+  <header>
+    <h1>Backing Tracks</h1>
+    <p id="health" class="muted">Checking audio toolchain…</p>
+  </header>
 
+  <!-- 1. Find -->
   <section class="card">
-    <label for="url">Ultimate Guitar chords URL</label>
+    <label for="find">Song name or Ultimate Guitar URL</label>
     <div class="row">
-      <input id="url" type="text" spellcheck="false"
-             value="https://tabs.ultimate-guitar.com/tab/oasis/wonderwall-chords-27596">
-      <button id="generate">Generate</button>
+      <input id="find" type="text" spellcheck="false"
+             placeholder="e.g. oasis wonderwall  —  or paste a chords URL">
+      <button id="find-btn">Find</button>
     </div>
+    <div class="row subrow">
+      <a id="paste-toggle" class="link">Paste chords instead</a>
+      <select id="library" class="library" title="Your saved songs">
+        <option value="">Saved songs…</option>
+      </select>
+    </div>
+    <div id="paste-box" class="hidden">
+      <div class="row">
+        <input id="paste-title" type="text" placeholder="Title">
+        <input id="paste-artist" type="text" placeholder="Artist">
+      </div>
+      <textarea id="paste-text" rows="8" spellcheck="false"
+                placeholder="Paste a chord chart — chords on their own line above the lyrics:&#10;&#10;[Verse]&#10;C        G       Am      F&#10;Today is gonna be the day..."></textarea>
+      <button id="paste-btn">Use pasted chords</button>
+    </div>
+    <div id="results" class="results hidden"></div>
     <p id="status" class="muted"></p>
   </section>
 
-  <section class="card hidden" id="song-card">
-    <h2 id="song-title"></h2>
-    <p id="song-meta" class="muted"></p>
-    <audio id="player" controls></audio>
-    <p class="downloads">
-      <a id="dl-midi" download>Download MIDI</a>
-      <a id="dl-wav" download>Download WAV</a>
-      <a id="dl-mp3" download class="hidden">Download MP3</a>
-    </p>
-  </section>
+  <div id="workspace" class="hidden">
+    <!-- 2. Song panel -->
+    <section class="card">
+      <h2 id="song-title"></h2>
+      <div class="grid">
+        <label>Style
+          <select id="style">
+            <option value="pop">Pop</option>
+            <option value="folk">Folk (boom-chick)</option>
+            <option value="ballad">Ballad</option>
+            <option value="muted_pop">Muted pop</option>
+            <option value="waltz">Waltz (3/4)</option>
+            <option value="six_eight">6/8</option>
+          </select>
+        </label>
+        <label id="bpm-label">Tempo (BPM)
+          <input id="bpm" type="number" min="30" max="300" step="1">
+        </label>
+        <label>Time signature
+          <select id="timesig">
+            <option value="4/4">4/4</option>
+            <option value="3/4">3/4</option>
+            <option value="6/8">6/8</option>
+          </select>
+        </label>
+        <label>Capo (chart)
+          <input id="capo" type="number" min="0" max="11" step="1">
+        </label>
+      </div>
+    </section>
 
-  <section class="card hidden" id="sheet-card">
-    <h2>Chord sheet</h2>
-    <pre id="sheet"></pre>
-  </section>
+    <!-- 3. Arrangement controls -->
+    <section class="card">
+      <div class="grid">
+        <label>Key (sing in)
+          <select id="key"></select>
+        </label>
+        <label>Transpose
+          <div class="stepper">
+            <button id="tr-down" type="button">−</button>
+            <span id="tr-value">0</span>
+            <button id="tr-up" type="button">+</button>
+          </div>
+        </label>
+        <label>Capo handling
+          <select id="capo-mode">
+            <option value="keep">Keep shapes (capo)</option>
+            <option value="auto">Auto-capo (easy shapes)</option>
+            <option value="none">No capo (transpose)</option>
+          </select>
+        </label>
+        <label>Guitar tone
+          <select id="guitar-program">
+            <option value="25">Steel string</option>
+            <option value="24">Nylon (classical)</option>
+          </select>
+        </label>
+      </div>
+      <div class="checks">
+        <label class="chk"><input type="checkbox" id="guitar" checked> Guitar</label>
+        <label class="chk"><input type="checkbox" id="piano" checked> Piano</label>
+        <label class="chk"><input type="checkbox" id="drums"> Drums</label>
+        <label class="chk"><input type="checkbox" id="count-in" checked> Count-in</label>
+      </div>
+      <div class="row">
+        <button id="generate" class="primary">Generate backing track</button>
+        <span id="gen-status" class="muted"></span>
+      </div>
+    </section>
+
+    <!-- 4. Player -->
+    <section id="player-card" class="card hidden">
+      <p id="player-meta" class="muted"></p>
+      <audio id="player" controls></audio>
+      <p class="downloads">
+        <a id="dl-midi" download>MIDI</a>
+        <a id="dl-wav" download>WAV</a>
+        <a id="dl-mp3" download class="hidden">MP3</a>
+      </p>
+    </section>
+
+    <!-- 5. Chord sheet -->
+    <section id="sheet-card" class="card">
+      <h2>Chord sheet <span id="sheet-badge" class="badge"></span></h2>
+      <pre id="sheet"></pre>
+    </section>
+  </div>
 </main>
 <script src="/static/app.js"></script>
 </body>
