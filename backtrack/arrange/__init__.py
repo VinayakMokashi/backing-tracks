@@ -15,6 +15,24 @@ from .voicings import quality_to_intervals
 _STICK = 37  # GM side stick, used for the count-in
 
 
+def resolve_capo(capo: int, transpose: int, capo_mode: str) -> tuple[int, int]:
+    """Split a transpose request into (symbol_shift, capo_out).
+
+    symbol_shift is applied to the written SHAPE chords; capo_out is the capo
+    fret the guitar plays with. Their sum is always capo + transpose, so the
+    SOUNDING pitch is invariant across modes — only the fingering/display
+    change. 'keep' preserves the written shapes whenever the resulting capo
+    lands in a playable 0-11 range. 'auto' behaves like 'keep' until the M6
+    open-shape scorer ships.
+    """
+    total = capo + transpose
+    if capo_mode == "none":
+        return total, 0
+    if 0 <= total <= 11:
+        return 0, total          # keep written shapes, move the capo
+    return total, 0              # capo out of range -> transpose the shapes
+
+
 def _flatten(song: Song) -> list[tuple[float, ChordEvent]]:
     """Sections (honoring repeat) -> [(absolute_beat, event)] timeline."""
     numerator = song.time_signature[0]

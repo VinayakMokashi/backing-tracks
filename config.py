@@ -66,6 +66,12 @@ USER_AGENT = (
 )
 FETCH_MIN_INTERVAL_S = 1.0  # politeness: at most one outbound fetch per second
 
+# Optional GetSongBPM auto-tempo lookup (getsongbpm.com/api). Best-effort only:
+# register a free key + place the required backlink (see README). Leave None to
+# skip the lookup entirely — style defaults still fill in the tempo.
+GETSONGBPM_API_KEY: str | None = None
+GETSONGBPM_TIMEOUT_S = 2.0
+
 HOST = "127.0.0.1"
 PORT = 8765
 

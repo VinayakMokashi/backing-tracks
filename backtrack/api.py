@@ -16,10 +16,12 @@ from pydantic import BaseModel, Field
 
 import config
 
+from dataclasses import asdict
+
 from . import chords, render, sheet_parser, store
-from .arrange import arrange
-from .model import RenderOptions, options_hash, song_to_dict
-from .sources import SourceError, get_sheet
+from .arrange import arrange, resolve_capo
+from .model import ChordEvent, RenderOptions, Section, options_hash, song_to_dict
+from .sources import RawSheet, SourceError, get_sheet, search
 
 config.ensure_dirs()
 app = FastAPI(title="Backing Tracks")
@@ -41,7 +43,7 @@ class SongRequest(BaseModel):
 
 
 class RenderRequest(BaseModel):
-    transpose: int = 0
+    transpose: int = Field(default=0, ge=-12, le=12)
     guitar: bool = True
     piano: bool = True
     drums: bool = False
@@ -52,11 +54,38 @@ class RenderRequest(BaseModel):
     capo_mode: str = "keep"
 
 
+class SongPatch(BaseModel):
+    title: str | None = None
+    artist: str | None = None
+    bpm: float | None = Field(default=None, gt=0, le=400)
+    style: str | None = None
+    key: str | None = None
+    capo: int | None = Field(default=None, ge=0, le=11)
+    time_signature: tuple[int, int] | None = None
+    sections: list[dict] | None = None
+
+
 def _error(status: int, code: str, message: str, hint: str) -> JSONResponse:
     return JSONResponse(
         status_code=status,
         content={"error": {"code": code, "message": message, "hint": hint}},
     )
+
+
+def _key_prefers_flats(key_symbol: str, shift: int) -> bool:
+    parsed = chords.parse_symbol(key_symbol)
+    if parsed is None or parsed.is_rest:
+        return False
+    return chords.prefer_flats_for(parsed.root_pc + shift,
+                                   chords.key_is_minor(key_symbol))
+
+
+def _spell_key(key_symbol: str, shift: int) -> str:
+    parsed = chords.parse_symbol(key_symbol)
+    if parsed is None or parsed.is_rest:
+        return key_symbol
+    return chords.transpose_symbol(key_symbol, shift,
+                                   _key_prefers_flats(key_symbol, shift))
 
 
 # Bad client input is 422; only genuine upstream faults stay 502.
@@ -90,21 +119,38 @@ def health():
     return render.check_environment()
 
 
+@app.get("/api/search")
+def search_songs(q: str):
+    query = q.strip()
+    if not query:
+        return {"results": []}
+    results = search(query, limit=5)
+    return {"results": [asdict(r) for r in results]}
+
+
 @app.post("/api/songs")
 def create_song(req: SongRequest):
-    if not req.url:
-        return _error(
-            400, "not_implemented",
-            "Only URL input is wired up so far (paste arrives in M2).",
-            "Provide an Ultimate Guitar chords URL.",
+    if req.url:
+        raw = get_sheet(req.url)
+    elif req.paste and req.paste.strip():
+        raw = RawSheet(
+            content=sheet_parser.wrap_bare_chords(req.paste),
+            meta={"title": req.title, "artist": req.artist},
+            applicature=None, source="paste", url=None,
         )
-    raw = get_sheet(req.url)
+    else:
+        return _error(
+            400, "bad_request",
+            "Provide a chord-page URL or pasted chord text.",
+            "Paste a chord chart, or give an Ultimate Guitar chords URL.",
+        )
     song = sheet_parser.parse(raw, title=req.title, artist=req.artist)
     if not song.sections:
         return _error(
             422, "parse_failed",
-            "No chords found on that page.",
-            "Make sure it is a Chords page (URL contains '/tab/'), not Pro/Official.",
+            "No chords found in that input.",
+            "For a URL, use a Chords page (contains '/tab/'); for paste, put "
+            "chords on their own lines above the lyrics.",
         )
     existing = store.load_song(song.id)
     if existing is not None and existing.source_url != song.source_url:
@@ -132,6 +178,51 @@ def get_song(song_id: str):
     return song_to_dict(song)
 
 
+@app.patch("/api/songs/{song_id}")
+def patch_song(song_id: str, patch: SongPatch):
+    song = store.load_song(song_id) if _SLUG_RE.match(song_id) else None
+    if song is None:
+        return _error(404, "not_found", f"No song {song_id!r}.",
+                      "Create it first via the Find box.")
+    updates = patch.model_dump(exclude_unset=True)
+    sections = updates.pop("sections", None)
+    if sections is not None:
+        song.sections = [
+            Section(
+                name=s.get("name", ""),
+                chords=[ChordEvent(symbol=c["symbol"], beat=float(c["beat"]),
+                                   duration_beats=float(c["duration_beats"]))
+                        for c in s.get("chords", [])],
+                bars=s.get("bars", 0),
+                repeat=s.get("repeat", 1),
+            )
+            for s in sections
+        ]
+    for field_name, value in updates.items():
+        setattr(song, field_name, value)
+    store.save_song(song)
+    return song_to_dict(song)
+
+
+@app.get("/api/songs/{song_id}/sheet")
+def song_sheet(song_id: str, transpose: int = 0, capo_mode: str = "keep"):
+    song = store.load_song(song_id) if _SLUG_RE.match(song_id) else None
+    if song is None:
+        return _error(404, "not_found", f"No song {song_id!r}.",
+                      "Create it first via the Find box.")
+    symbol_shift, capo_out = resolve_capo(song.capo, transpose, capo_mode)
+    shape_key = chords.transpose_symbol(song.key, symbol_shift)
+    sounding = _spell_key(song.key, symbol_shift + capo_out)
+    prefer_flats = _key_prefers_flats(song.key, symbol_shift + capo_out)
+    return {
+        "sheet_html": sheet_parser.to_html(song.sheet_text, symbol_shift, prefer_flats),
+        "shape_key": chords.transpose_symbol(song.key, symbol_shift,
+                                             _key_prefers_flats(song.key, symbol_shift)),
+        "capo": capo_out,
+        "sounding_key": sounding,
+    }
+
+
 @app.post("/api/songs/{song_id}/render")
 def render_song(song_id: str, req: RenderRequest):
     song = store.load_song(song_id) if _SLUG_RE.match(song_id) else None
@@ -153,14 +244,7 @@ def render_song(song_id: str, req: RenderRequest):
             seconds = result.seconds
             mp3_exists = result.mp3_path is not None
 
-    shift = song.capo + opts.transpose
-    key_parsed = chords.parse_symbol(song.key)
-    if key_parsed is not None and not key_parsed.is_rest:
-        minor = chords.key_is_minor(song.key)
-        flats = chords.prefer_flats_for(key_parsed.root_pc + shift, minor)
-        sounding_key = chords.transpose_symbol(song.key, shift, flats)
-    else:
-        sounding_key = song.key
+    sounding_key = _spell_key(song.key, song.capo + opts.transpose)
 
     return {
         "midi_url": f"/media/{song_id}/{ohash}.mid",
