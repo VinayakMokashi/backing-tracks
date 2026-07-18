@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Backing Tracks</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main>
+  <h1>Backing Tracks</h1>
+  <p id="health" class="muted">Checking audio toolchain…</p>
+
+  <section class="card">
+    <label for="url">Ultimate Guitar chords URL</label>
+    <div class="row">
+      <input id="url" type="text" spellcheck="false"
+             value="https://tabs.ultimate-guitar.com/tab/oasis/wonderwall-chords-27596">
+      <button id="generate">Generate</button>
+    </div>
+    <p id="status" class="muted"></p>
+  </section>
+
+  <section class="card hidden" id="song-card">
+    <h2 id="song-title"></h2>
+    <p id="song-meta" class="muted"></p>
+    <audio id="player" controls></audio>
+    <p class="downloads">
+      <a id="dl-midi" download>Download MIDI</a>
+      <a id="dl-wav" download>Download WAV</a>
+      <a id="dl-mp3" download class="hidden">Download MP3</a>
+    </p>
+  </section>
+
+  <section class="card hidden" id="sheet-card">
+    <h2>Chord sheet</h2>
+    <pre id="sheet"></pre>
+  </section>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>

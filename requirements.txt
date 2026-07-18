@@ -1,0 +1,7 @@
+fastapi>=0.111
+uvicorn[standard]>=0.30
+requests>=2.32
+beautifulsoup4>=4.12
+pychord>=1.4.0
+pretty_midi>=0.2.11
+pytest>=8.0
