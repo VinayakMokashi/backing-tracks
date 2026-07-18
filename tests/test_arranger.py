@@ -1,4 +1,6 @@
 from backtrack.arrange import arrange, resolve_capo
+from backtrack.arrange.piano import _voice_lead
+from backtrack.arrange.voicings import guitar_voicing
 from backtrack.model import ChordEvent, RenderOptions, Section, Song
 
 
@@ -13,9 +15,13 @@ def _song(bpm: float = 100.0) -> Song:
     )
 
 
+def _notes(pm):
+    return [n for inst in pm.instruments for n in inst.notes]
+
+
 def test_arrange_basic_invariants():
-    pm = arrange(_song(), RenderOptions())
-    notes = [n for inst in pm.instruments for n in inst.notes]
+    pm = arrange(_song(), RenderOptions(drums=True))
+    notes = _notes(pm)
     assert notes
     for n in notes:
         assert 0 <= n.velocity <= 127
@@ -23,31 +29,46 @@ def test_arrange_basic_invariants():
         assert n.start >= 0 and n.end > n.start
 
 
-def test_count_in_adds_drum_track_and_offsets_start():
-    with_count = arrange(_song(), RenderOptions(count_in=True))
-    without = arrange(_song(), RenderOptions(count_in=False))
-    assert any(inst.is_drum for inst in with_count.instruments)
-    assert not any(inst.is_drum for inst in without.instruments)
-    piano_with = [i for i in with_count.instruments if not i.is_drum][0]
-    piano_without = [i for i in without.instruments if not i.is_drum][0]
-    first_with = min(n.start for n in piano_with.notes)
-    first_without = min(n.start for n in piano_without.notes)
-    assert first_with > first_without  # count-in pushes the music later
+def test_instrument_toggles():
+    guitar_only = arrange(_song(), RenderOptions(guitar=True, piano=False,
+                                                 count_in=False))
+    names = {i.name for i in guitar_only.instruments}
+    assert "Guitar" in names and "Piano" not in names
+    both = arrange(_song(), RenderOptions(guitar=True, piano=True, count_in=False))
+    assert {"Guitar", "Piano"} <= {i.name for i in both.instruments}
 
 
-def test_am_has_no_unison_duplicate():
-    pm = arrange(_song(), RenderOptions(count_in=False))
-    piano = [i for i in pm.instruments if not i.is_drum][0]
-    am = sorted(n.pitch for n in piano.notes if abs(n.start - 4.0 * 0.6) < 0.2)
-    assert len(am) == len(set(am))  # no two notes at the same pitch
+def test_count_in_offsets_music_start():
+    with_ci = arrange(_song(), RenderOptions(count_in=True, piano=False))
+    without = arrange(_song(), RenderOptions(count_in=False, piano=False))
+    gwith = [i for i in with_ci.instruments if i.name == "Guitar"][0]
+    gwithout = [i for i in without.instruments if i.name == "Guitar"][0]
+    assert min(n.start for n in gwith.notes) > min(n.start for n in gwithout.notes)
 
 
-def test_transpose_shifts_pitches_up():
+def test_transpose_shifts_everything_up():
     base = arrange(_song(), RenderOptions(count_in=False))
     up = arrange(_song(), RenderOptions(count_in=False, transpose=2))
-    base_first = [i for i in base.instruments if not i.is_drum][0].notes[0].pitch
-    up_first = [i for i in up.instruments if not i.is_drum][0].notes[0].pitch
-    assert up_first == base_first + 2
+    assert min(n.pitch for n in _notes(up)) == min(n.pitch for n in _notes(base)) + 2
+
+
+def test_piano_voice_leading_small_leaps():
+    # C -> Am -> F -> G tops should never jump more than a fourth (5 semitones)
+    prev = None
+    tops = []
+    for sym, quality in [(0, ""), (9, "m"), (5, ""), (7, "")]:
+        rh = _voice_lead(sym, quality, prev)
+        prev = rh[-1]
+        tops.append(rh[-1])
+    for a, b in zip(tops, tops[1:]):
+        assert abs(a - b) <= 5
+
+
+def test_guitar_voicing_is_guitar_shaped():
+    # open C uses the dictionary voicing; a barre chord (F) spans >= an octave
+    assert guitar_voicing(0, "") == sorted([48, 52, 55, 60, 64])
+    f = guitar_voicing(5, "")
+    assert max(f) - min(f) >= 12 and len(f) >= 5
 
 
 def test_resolve_capo_keeps_sounding_invariant():
@@ -55,5 +76,4 @@ def test_resolve_capo_keeps_sounding_invariant():
         for transpose in (-4, 0, 3, 12):
             shift, capo_out = resolve_capo(capo, transpose, "keep")
             assert shift + capo_out == capo + transpose
-    # 'none' never uses a capo
     assert resolve_capo(2, 3, "none") == (5, 0)

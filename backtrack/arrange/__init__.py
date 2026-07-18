@@ -1,18 +1,23 @@
 """Arranger: arrange(song, opts) -> pretty_midi.PrettyMIDI — the one seam.
 
-M1 scope: piano block chords + optional count-in, proving timing, transposition
-and rendering end-to-end. The guitar strum engine (M3) and piano comping engine
-(M4) replace the track builders behind this same seam.
+Flattens sections (honoring repeat) into an absolute eighth-note-slot timeline,
+resolves transpose + capo into shape/sounding chord spans, and hands each
+enabled track to its engine (guitar strum, piano comping, optional drums), with
+a leading count-in click.
 """
 from __future__ import annotations
+
+import math
+import random
 
 import pretty_midi
 
 from .. import chords
-from ..model import ChordEvent, RenderOptions, Song
-from .voicings import quality_to_intervals
+from ..model import ParsedChord, RenderOptions, Song
+from . import drums, guitar, piano, patterns
 
 _STICK = 37  # GM side stick, used for the count-in
+_SEED = 1337  # fixed so a given (song, options) always renders identically
 
 
 def resolve_capo(capo: int, transpose: int, capo_mode: str) -> tuple[int, int]:
@@ -33,78 +38,98 @@ def resolve_capo(capo: int, transpose: int, capo_mode: str) -> tuple[int, int]:
     return total, 0              # capo out of range -> transpose the shapes
 
 
-def _flatten(song: Song) -> list[tuple[float, ChordEvent]]:
-    """Sections (honoring repeat) -> [(absolute_beat, event)] timeline."""
+def _shift(parsed: ParsedChord | None, n: int) -> ParsedChord | None:
+    if parsed is None:
+        return None
+    if parsed.is_rest:
+        return parsed
+    return ParsedChord(
+        root_pc=(parsed.root_pc + n) % 12,
+        quality=parsed.quality,
+        bass_pc=(parsed.bass_pc + n) % 12 if parsed.bass_pc is not None else None,
+    )
+
+
+def _timeline(song: Song, slots_per_beat: float):
+    """Return (spans, total_bars, section_start_bars).
+
+    spans: list of (start_slot, end_slot, ParsedChord|None) in absolute slots.
+    """
     numerator = song.time_signature[0]
-    timeline: list[tuple[float, ChordEvent]] = []
-    cursor = 0.0
+    slots_per_bar = numerator * slots_per_beat
+    spans: list[tuple[float, float, ParsedChord | None]] = []
+    section_start_bars: set[int] = set()
+    cursor_beats = 0.0
     for section in song.sections:
         section_beats = max(
             (ev.beat + ev.duration_beats for ev in section.chords),
             default=float(section.bars * numerator),
         )
         for _ in range(max(1, section.repeat)):
+            section_start_bars.add(int(round(cursor_beats / numerator)))
             for ev in section.chords:
-                timeline.append((cursor + ev.beat, ev))
-            cursor += section_beats
-    return timeline
+                start_slot = (cursor_beats + ev.beat) * slots_per_beat
+                end_slot = start_slot + ev.duration_beats * slots_per_beat
+                spans.append((start_slot, end_slot, chords.parse_symbol(ev.symbol)))
+            cursor_beats += section_beats
+    max_end = max((e for _, e, _ in spans), default=0.0)
+    total_bars = max(1, math.ceil(max_end / slots_per_bar - 1e-9))
+    return spans, total_bars, section_start_bars
+
+
+def _chord_at(spans):
+    def lookup(slot):
+        for start, end, chord in spans:
+            if start <= slot < end:
+                return chord
+        return None
+    return lookup
 
 
 def arrange(song: Song, opts: RenderOptions) -> pretty_midi.PrettyMIDI:
+    style = opts.style or song.style
+    strum_name, piano_name, drum_name = patterns.style_patterns(style)
     bpm = opts.bpm or song.bpm
     numerator, denominator = song.time_signature
     sec_per_beat = (60.0 / bpm) * (4.0 / denominator)
+    sec_per_slot = 30.0 / bpm            # one eighth-note slot
+    slots_per_beat = 8 / denominator
+    slots_per_bar = int(round(numerator * slots_per_beat))
+    rng = random.Random(_SEED)
 
-    # M1: piano plays SOUNDING chords — shape symbols shifted by capo + transpose.
-    total_shift = song.capo + opts.transpose
+    symbol_shift, capo_out = resolve_capo(song.capo, opts.transpose, opts.capo_mode)
+
+    spans, total_bars, section_start_bars = _timeline(song, slots_per_beat)
+    shape_spans = [(s, e, _shift(c, symbol_shift)) for s, e, c in spans]
+    sounding_spans = [(s, e, _shift(c, symbol_shift + capo_out)) for s, e, c in spans]
 
     pm = pretty_midi.PrettyMIDI(initial_tempo=bpm)
     pm.time_signature_changes.append(
-        pretty_midi.TimeSignature(numerator, denominator, 0.0)
-    )
+        pretty_midi.TimeSignature(numerator, denominator, 0.0))
 
     t0 = 0.0
     if opts.count_in:
         clicks = pretty_midi.Instrument(program=0, is_drum=True, name="Count-in")
         for beat in range(numerator):
             start = beat * sec_per_beat
-            velocity = 100 if beat == 0 else 78
-            clicks.notes.append(
-                pretty_midi.Note(velocity=velocity, pitch=_STICK,
-                                 start=start, end=start + 0.1)
-            )
+            clicks.notes.append(pretty_midi.Note(
+                velocity=100 if beat == 0 else 78, pitch=_STICK,
+                start=start, end=start + 0.1))
         pm.instruments.append(clicks)
         t0 = numerator * sec_per_beat
 
-    piano = pretty_midi.Instrument(program=0, name="Piano")
-    for abs_beat, ev in _flatten(song):
-        parsed = chords.parse_symbol(ev.symbol)
-        if parsed is None or parsed.is_rest:
-            continue
-        root_pc = (parsed.root_pc + total_shift) % 12
-        bass_pc = (
-            (parsed.bass_pc + total_shift) % 12 if parsed.bass_pc is not None else root_pc
-        )
-        start = t0 + abs_beat * sec_per_beat
-        end = start + max(ev.duration_beats * sec_per_beat - 0.02, 0.05)
+    if opts.guitar:
+        pm.instruments.append(guitar.build_track(
+            opts.guitar_program, patterns.STRUM_PATTERNS[strum_name],
+            _chord_at(shape_spans), slots_per_bar, total_bars, sec_per_slot,
+            t0, capo_out, rng))
+    if opts.piano:
+        pm.instruments.append(piano.build_track(
+            0, patterns.PIANO_PATTERNS[piano_name], sounding_spans,
+            slots_per_bar, total_bars, sec_per_slot, t0))
+    if opts.drums:
+        pm.instruments.append(drums.build_track(
+            patterns.DRUM_PATTERNS[drum_name], slots_per_bar, total_bars,
+            sec_per_slot, t0, section_start_bars, rng))
 
-        # Left hand: bass note in 36-47 plus its octave above.
-        lh_root = 36 + bass_pc
-        lh_pitches = (lh_root, lh_root + 12)
-        for pitch in lh_pitches:
-            piano.notes.append(
-                pretty_midi.Note(velocity=88, pitch=pitch, start=start, end=end)
-            )
-        # Right hand: chord tones centred around middle C.
-        rh_root = 60 + root_pc
-        if rh_root > 67:
-            rh_root -= 12
-        for interval in quality_to_intervals(parsed.quality):
-            pitch = rh_root + interval
-            if pitch in lh_pitches:
-                continue  # root already sounded by the LH octave — avoid unison stacking
-            piano.notes.append(
-                pretty_midi.Note(velocity=80, pitch=pitch, start=start, end=end)
-            )
-    pm.instruments.append(piano)
     return pm

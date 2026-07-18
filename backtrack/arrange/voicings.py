@@ -38,6 +38,100 @@ QUALITY_INTERVALS = {
 }
 
 
+# Open-position voicings (MIDI notes low->high; standard tuning
+# E2=40 A2=45 D3=50 G3=55 B3=59 E4=64). Keyed by name; resolved to
+# (root_pc, quality) at import.
+OPEN_CHORDS: dict[str, list[int]] = {
+    "E": [40, 47, 52, 56, 59, 64], "Em": [40, 47, 52, 55, 59, 64],
+    "E7": [40, 47, 50, 56, 59, 64], "Em7": [40, 47, 52, 55, 62, 64],
+    "A": [45, 52, 57, 61, 64], "Am": [45, 52, 57, 60, 64],
+    "A7": [45, 52, 55, 61, 64], "Am7": [45, 52, 55, 60, 64],
+    "Asus4": [45, 52, 57, 62, 64],
+    "D": [50, 57, 62, 66], "Dm": [50, 57, 62, 65],
+    "D7": [50, 57, 60, 66], "Dm7": [50, 57, 60, 65], "Dsus4": [50, 57, 62, 67],
+    "G": [43, 47, 50, 55, 59, 67], "G7": [43, 47, 50, 55, 59, 65],
+    "C": [48, 52, 55, 60, 64], "C7": [48, 52, 58, 60, 64],
+    "Cmaj7": [48, 52, 55, 59, 64], "B7": [47, 51, 57, 59, 66],
+}
+
+_OPEN_STRING_PCS = (4, 9, 2, 7, 11, 4)  # E A D G B E
+
+
+def _build_open_by_key() -> dict[tuple[int, str], list[int]]:
+    from ..chords import parse_symbol
+    table: dict[tuple[int, str], list[int]] = {}
+    for name, notes in OPEN_CHORDS.items():
+        parsed = parse_symbol(name)
+        if parsed is not None:
+            table[(parsed.root_pc, parsed.quality)] = sorted(notes)
+    return table
+
+
+OPEN_BY_KEY = _build_open_by_key()
+
+# Barre-shape interval stacks above the root note on the barre string.
+_E_SHAPE = {
+    "maj": [0, 7, 12, 16, 19, 24], "min": [0, 7, 12, 15, 19, 24],
+    "dom7": [0, 7, 10, 16, 19], "min7": [0, 7, 10, 15, 19],
+}
+_A_SHAPE = {
+    "maj": [0, 7, 12, 16, 19], "min": [0, 7, 12, 15, 19],
+    "dom7": [0, 7, 10, 16], "min7": [0, 7, 10, 15],
+}
+
+
+def _shape_family(quality: str) -> str:
+    minor = quality.startswith("m") and not quality.startswith("maj")
+    seventh = "7" in quality and "maj7" not in quality and "M7" not in quality
+    if minor and seventh:
+        return "min7"
+    if minor:
+        return "min"
+    if seventh:
+        return "dom7"
+    return "maj"
+
+
+def _barre_voicing(root_pc: int, quality: str) -> list[int]:
+    e_fret = (root_pc - _OPEN_STRING_PCS[0]) % 12
+    family = _shape_family(quality)
+    if 1 <= e_fret <= 6:
+        root = 40 + e_fret
+        stack = _E_SHAPE[family]
+    else:
+        a_fret = (root_pc - _OPEN_STRING_PCS[1]) % 12
+        root = 45 + a_fret
+        stack = _A_SHAPE[family]
+    return [root + i for i in stack]
+
+
+def _apply_slash_bass(notes: list[int], bass_pc: int) -> list[int]:
+    upper = notes[1:] if len(notes) > 1 else notes
+    bass = 40 + ((bass_pc - _OPEN_STRING_PCS[0]) % 12)  # 40..51
+    while upper and bass >= min(upper):
+        bass -= 12
+    if bass < 28:
+        bass += 12
+    return sorted([bass, *upper])
+
+
+def guitar_voicing(root_pc: int, quality: str,
+                   bass_pc: int | None = None) -> list[int]:
+    """MIDI notes (low->high) for a chord's SHAPE, before any capo offset.
+
+    Open-chord dictionary first, then E/A barre shapes; slash basses replace
+    the lowest string. Extensions unsupported by a barre fall back to the
+    triad/7 shape (the piano carries the colour tones).
+    """
+    notes = OPEN_BY_KEY.get((root_pc % 12, quality))
+    if notes is None:
+        notes = _barre_voicing(root_pc % 12, quality)
+    notes = sorted(notes)
+    if bass_pc is not None and bass_pc % 12 != root_pc % 12:
+        notes = _apply_slash_bass(notes, bass_pc)
+    return notes
+
+
 @functools.lru_cache(maxsize=512)
 def _pychord_intervals(quality: str) -> tuple[int, ...] | None:
     """Ask pychord for the interval set of a quality we don't hand-table.
