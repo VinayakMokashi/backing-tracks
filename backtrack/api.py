@@ -10,9 +10,10 @@ import re
 import threading
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 import config
 
@@ -64,6 +65,13 @@ class SongPatch(BaseModel):
     time_signature: tuple[int, int] | None = None
     sections: list[dict] | None = None
 
+    @field_validator("time_signature")
+    @classmethod
+    def _ts_positive(cls, v):
+        if v is not None and (v[0] < 1 or v[1] < 1):
+            raise ValueError("time signature numerator and denominator must be >= 1")
+        return v
+
 
 def _error(status: int, code: str, message: str, hint: str) -> JSONResponse:
     return JSONResponse(
@@ -100,6 +108,16 @@ def _source_error(_request, exc: SourceError):
 @app.exception_handler(render.RenderError)
 def _render_error(_request, exc: render.RenderError):
     return _error(500, "render_failed", exc.message, exc.hint)
+
+
+@app.exception_handler(RequestValidationError)
+def _validation_error(_request, exc: RequestValidationError):
+    errs = exc.errors()
+    first = errs[0] if errs else {}
+    loc = ".".join(str(p) for p in first.get("loc", ()) if p != "body")
+    message = f"Invalid value for {loc!r}." if loc else "Invalid request parameters."
+    return _error(422, "bad_request", message,
+                  first.get("msg", "Check the field values and try again."))
 
 
 @app.exception_handler(Exception)
@@ -153,13 +171,11 @@ def create_song(req: SongRequest):
             "chords on their own lines above the lyrics.",
         )
     existing = store.load_song(song.id)
-    if existing is not None and existing.source_url != song.source_url:
-        # Same artist+title from a different chart: disambiguate instead of
-        # silently overwriting the saved song.
-        suffix = hashlib.sha1(
-            (song.source_url or song.sheet_text).encode("utf-8")
-        ).hexdigest()[:6]
-        song.id = f"{song.id}-{suffix}"
+    identity = song.source_url or song.sheet_text
+    if existing is not None and (existing.source_url or existing.sheet_text) != identity:
+        # Same title/artist but different chart (incl. two url-less pastes):
+        # disambiguate instead of silently overwriting the saved song.
+        song.id = f"{song.id}-{hashlib.sha1(identity.encode('utf-8')).hexdigest()[:6]}"
     store.save_song(song)
     return song_to_dict(song)
 
@@ -187,17 +203,23 @@ def patch_song(song_id: str, patch: SongPatch):
     updates = patch.model_dump(exclude_unset=True)
     sections = updates.pop("sections", None)
     if sections is not None:
-        song.sections = [
-            Section(
-                name=s.get("name", ""),
-                chords=[ChordEvent(symbol=c["symbol"], beat=float(c["beat"]),
-                                   duration_beats=float(c["duration_beats"]))
-                        for c in s.get("chords", [])],
-                bars=s.get("bars", 0),
-                repeat=s.get("repeat", 1),
+        try:
+            song.sections = [
+                Section(
+                    name=s.get("name", ""),
+                    chords=[ChordEvent(symbol=c["symbol"], beat=float(c["beat"]),
+                                       duration_beats=float(c["duration_beats"]))
+                            for c in s.get("chords", [])],
+                    bars=s.get("bars", 0),
+                    repeat=s.get("repeat", 1),
+                )
+                for s in sections
+            ]
+        except (KeyError, ValueError, TypeError, AttributeError):
+            return _error(
+                422, "bad_request", "Malformed 'sections' in PATCH body.",
+                "Each chord needs a 'symbol' plus numeric 'beat' and 'duration_beats'.",
             )
-            for s in sections
-        ]
     for field_name, value in updates.items():
         setattr(song, field_name, value)
     store.save_song(song)

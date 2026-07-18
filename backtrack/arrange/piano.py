@@ -83,30 +83,37 @@ def build_track(program: int, pattern, spans, slots_per_bar: int, total_bars: in
     inst = pretty_midi.Instrument(program=program, name="Piano")
     voiced = _spans_with_voicing(spans)
 
-    # Sustain pedal: down at each chord onset, up 20 ms before the next chord.
-    real = [v for v in voiced if v is not None]
-    for idx, v in enumerate(real):
+    # Sustain pedal: down at each chord onset, up 20 ms before this chord's own
+    # span ends — so a following rest (N.C.) actually silences the piano.
+    for v in (v for v in voiced if v is not None):
         down_t = t0 + v["start"] * sec_per_slot
-        next_start = real[idx + 1]["start"] if idx + 1 < len(real) else v["end"]
-        up_t = t0 + next_start * sec_per_slot - 0.02
+        up_t = t0 + v["end"] * sec_per_slot - 0.02
         inst.control_changes.append(
             pretty_midi.ControlChange(_SUSTAIN, 127, max(0.0, down_t)))
         inst.control_changes.append(
             pretty_midi.ControlChange(_SUSTAIN, 0, max(down_t + 0.05, up_t)))
 
+    # Drive each bar by chord ONSETS so a chord that begins mid-bar is voiced
+    # (mirrors the guitar engine, which looks up the chord per slot).
     for bar in range(total_bars):
         bar_start = bar * slots_per_bar
-        for row in pattern:
-            slot, kind = row[0], row[1]
-            if slot >= slots_per_bar:
-                continue
-            v = _active(voiced, bar_start + slot)
-            if v is None:
-                continue
-            if kind == "ARP":
-                _emit_arp(inst, row, v, bar_start, slots_per_bar, sec_per_slot, t0)
-            else:
-                _emit_slot(inst, row, v, bar_start, sec_per_slot, t0)
+        bar_end = bar_start + slots_per_bar
+        onsets = sorted({int(v["start"]) for v in voiced if v is not None
+                         and bar_start <= v["start"] < bar_end} | {bar_start})
+        for idx, onset in enumerate(onsets):
+            seg_end = onsets[idx + 1] if idx + 1 < len(onsets) else bar_end
+            for row in pattern:
+                slot, kind = row[0], row[1]
+                if onset + slot >= seg_end:
+                    continue
+                v = _active(voiced, onset + slot)
+                if v is None:
+                    continue
+                if kind == "ARP":
+                    _emit_arp(inst, row, voiced, onset, seg_end - onset,
+                              sec_per_slot, t0)
+                else:
+                    _emit_slot(inst, row, v, onset, sec_per_slot, t0)
     return inst
 
 
@@ -125,13 +132,16 @@ def _emit_slot(inst, row, v, bar_start, sec_per_slot, t0):
                                                start=start, end=end))
 
 
-def _emit_arp(inst, row, v, bar_start, slots_per_bar, sec_per_slot, t0):
+def _emit_arp(inst, row, voiced, seg_start, seg_slots, sec_per_slot, t0):
     _slot, _kind, tokens, vel, _dur = row
-    for i in range(slots_per_bar):
+    for i in range(seg_slots):
+        v = _active(voiced, seg_start + i)   # re-resolve per slot: mid-bar changes
+        if v is None:
+            continue
         token = tokens[i % len(tokens)]
         pitch = _token_pitch(token, v["lh_root"], v["third"], v["fifth"])
-        accent = 8 if i in (0, slots_per_bar // 2) else 0
-        start = t0 + (bar_start + i) * sec_per_slot
+        accent = 8 if i in (0, seg_slots // 2) else 0
+        start = t0 + (seg_start + i) * sec_per_slot
         end = start + sec_per_slot * 1.1  # legato overlap into the next slot
         inst.notes.append(pretty_midi.Note(velocity=min(127, vel + accent),
                                            pitch=pitch, start=start, end=end))

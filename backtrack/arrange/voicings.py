@@ -92,9 +92,23 @@ def _shape_family(quality: str) -> str:
     return "maj"
 
 
-def _barre_voicing(root_pc: int, quality: str) -> list[int]:
+def _stack_intervals(root_pc: int, quality: str) -> list[int]:
+    """Fallback voicing straight from the chord's real interval set — used when
+    no barre triad/7 shape is a subset of the chord (dim/aug/sus/7sus4/5/...)."""
     e_fret = (root_pc - _OPEN_STRING_PCS[0]) % 12
+    root = 40 + e_fret if 1 <= e_fret <= 6 else 45 + ((root_pc - _OPEN_STRING_PCS[1]) % 12)
+    return [root + i for i in quality_to_intervals(quality)]
+
+
+def _barre_voicing(root_pc: int, quality: str) -> list[int]:
     family = _shape_family(quality)
+    chord_pcs = {i % 12 for i in quality_to_intervals(quality)}
+    family_pcs = {i % 12 for i in _E_SHAPE[family]}
+    if not family_pcs <= chord_pcs:
+        # A maj/dom7 barre would inject a 3rd/5th/7th the chord lacks and clash
+        # with the piano — voice the actual chord tones instead.
+        return _stack_intervals(root_pc, quality)
+    e_fret = (root_pc - _OPEN_STRING_PCS[0]) % 12
     if 1 <= e_fret <= 6:
         root = 40 + e_fret
         stack = _E_SHAPE[family]

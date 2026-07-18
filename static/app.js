@@ -74,8 +74,13 @@ function renderResults(results) {
   for (const r of results) {
     const div = document.createElement("div");
     div.className = "result";
-    div.innerHTML = `<span class="title">${r.title} — ${r.artist}</span>` +
-      `<span class="meta">★ ${r.rating} · ${r.votes} votes · v${r.version}</span>`;
+    const title = document.createElement("span");
+    title.className = "title";
+    title.textContent = `${r.title} — ${r.artist}`;  // textContent: scraped data is untrusted
+    const meta = document.createElement("span");
+    meta.className = "meta";
+    meta.textContent = `★ ${r.rating} · ${r.votes} votes · v${r.version}`;
+    div.append(title, meta);
     div.onclick = async () => {
       box.classList.add("hidden");
       status($("status"), "Fetching chords…");
@@ -249,9 +254,10 @@ $("bpm").onchange = () => {
   if (!raw) return;
   patchSong({ bpm: $("timesig").value === "6/8" ? raw * 1.5 : raw });
 };
-$("timesig").onchange = () => {
+$("timesig").onchange = async () => {
   const [n, d] = $("timesig").value.split("/").map(Number);
-  patchSong({ time_signature: [n, d] });
+  await patchSong({ time_signature: [n, d] });
+  updateBpmField();  // relabel + reconvert BPM for the new meter (6/8 = dotted-¼)
 };
 
 $("capo-mode").onchange = () => updateSheet().then(syncKeyControls);

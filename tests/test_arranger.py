@@ -71,6 +71,28 @@ def test_guitar_voicing_is_guitar_shaped():
     assert max(f) - min(f) >= 12 and len(f) >= 5
 
 
+def test_piano_voices_both_chords_in_two_chord_bar():
+    # One 4/4 bar: C on beats 1-2, G on beats 3-4. The piano must voice G in
+    # the second half, not stay on C (or go silent).
+    song = Song(id="_t", title="T", bpm=100.0, sections=[Section(name="A", chords=[
+        ChordEvent("C", 0.0, 2.0), ChordEvent("G", 2.0, 2.0)])])
+    pm = arrange(song, RenderOptions(guitar=False, drums=False, count_in=False))
+    piano = [i for i in pm.instruments if i.name == "Piano"][0]
+    sec_per_slot = 30.0 / 100.0
+    second_half = [n for n in piano.notes if n.start >= 4 * sec_per_slot - 1e-6]
+    assert second_half, "piano is silent in the second half of the bar"
+    assert {n.pitch % 12 for n in second_half} & {7, 11, 2}  # some G-major tone
+
+
+def test_guitar_sus_dim_use_real_tones_not_major_triad():
+    from backtrack.chords import parse_symbol
+    for sym, allowed in [("A7sus4", {9, 2, 4, 7}), ("Bdim", {11, 2, 5}),
+                         ("Csus2", {0, 2, 7}), ("Caug", {0, 4, 8})]:
+        p = parse_symbol(sym)
+        pcs = {n % 12 for n in guitar_voicing(p.root_pc, p.quality, p.bass_pc)}
+        assert pcs <= allowed, f"{sym}: {pcs} introduces tones outside {allowed}"
+
+
 def test_resolve_capo_keeps_sounding_invariant():
     for capo in (0, 2, 5):
         for transpose in (-4, 0, 3, 12):
