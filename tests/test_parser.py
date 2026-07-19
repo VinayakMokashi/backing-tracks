@@ -46,6 +46,24 @@ def test_barline_bar_grouping():
     assert bar1[2].symbol == "Am" and bar1[2].duration_beats == 4.0
 
 
+def test_skips_legend_and_tab_lines():
+    # A trailing capo-legend table and a tab intro must not become song chords.
+    content = (
+        "[Verse]\n"
+        "[ch]C[/ch]        [ch]G[/ch]\n"
+        "Wise men say only fools rush in\n"
+        "[tab]e|---0---2---3---0---|\n"
+        "B|---1---1---0---1---|[/tab]\n"
+        "** Alternates:\n"
+        "[ch]C[/ch] = [ch]D[/ch]\n"
+        "[ch]G[/ch] = [ch]A[/ch]\n"
+    )
+    song = sheet_parser.parse(RawSheet(content=content, meta={}, applicature=None,
+                                       source="paste", url=None))
+    symbols = [c.symbol for s in song.sections for c in s.chords]
+    assert symbols == ["C", "G"]  # no legend D/A, no tab noise
+
+
 def test_column_spacing_drives_durations():
     # C spans many columns over the lyric; G is bunched at the end -> C is held
     # longer. This is the fix for timing drift.

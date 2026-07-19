@@ -29,6 +29,21 @@ def _clean_line(line: str) -> str:
     return CHORD_TAG_RE.sub(lambda m: m.group(1), line)
 
 
+def _is_tab_line(cleaned: str) -> bool:
+    """True for guitar-tablature lines (e|--2--0--, etc.) — not lyrics."""
+    s = cleaned.strip()
+    if len(s) < 4:
+        return False
+    dashes = s.count("-")
+    return dashes >= 5 and (dashes + s.count("|")) / len(s) > 0.5
+
+
+def _is_legend_line(cleaned: str) -> bool:
+    """True for capo/transpose reference tables ('C = D', 'Em = F#m') that
+    trail many charts — chord-shaped but never played."""
+    return "=" in cleaned
+
+
 def wrap_bare_chords(text: str) -> str:
     """Add [ch] tags to a pasted chart that has none.
 
@@ -199,21 +214,26 @@ def parse(raw: RawSheet, title: str = "", artist: str = "") -> Song:
             i += 1
             continue
         if "[ch]" not in line:
-            if not (has_headers and not preamble_done):
-                sheet_lines.append(display)  # lyric / blank line (skip preamble)
+            if not (has_headers and not preamble_done) and not _is_tab_line(cleaned):
+                sheet_lines.append(display)  # lyric / blank line (skip preamble & tab)
             i += 1
             continue
 
-        sheet_lines.append(display)
         cleaned_chord, cols = _chord_columns(line)
+        if _is_legend_line(cleaned_chord):
+            i += 1  # capo/transpose legend table — not song chords
+            continue
+        sheet_lines.append(display)
 
-        # A following non-chord, non-header, non-blank line is this line's lyric
-        # (its length/columns tell us how long each chord is held).
+        # A following non-chord, non-header, non-blank, non-tab line is this
+        # line's lyric (its length/columns tell us how long each chord is held).
         lyric = None
         if i + 1 < len(lines):
             nxt = lines[i + 1]
             nxt_clean = _clean_line(nxt)
-            if nxt.strip() and "[ch]" not in nxt and not SECTION_RE.match(nxt_clean.strip()):
+            if (nxt.strip() and "[ch]" not in nxt
+                    and not SECTION_RE.match(nxt_clean.strip())
+                    and not _is_tab_line(nxt_clean)):
                 lyric = nxt_clean
 
         if "|" in cleaned_chord:
