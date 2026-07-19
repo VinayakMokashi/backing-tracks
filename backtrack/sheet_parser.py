@@ -1,15 +1,19 @@
 """RawSheet -> Song.
 
-Bar-position heuristic (UG never gives durations): chords are grouped into bars
-using barlines when present, otherwise one chord per bar (two chords on a
-barless line share a bar). The parser is honest about guessing — durations,
-time signature, and style stay user-editable via PATCH; the UI is the
-correction mechanism.
+Timing model (UG never gives explicit durations): each chord's length is read
+from the horizontal COLUMN SPACING the chart uses to place it over the lyric —
+a chord held over many syllables spans more columns and gets more beats than a
+chord that changes quickly. Chord-only lines (intros) default to one bar each,
+and explicit ``|`` barlines are honoured when present. Durations remain
+user-editable via PATCH; the UI is the correction mechanism.
 """
 from __future__ import annotations
 
+import math
 import re
 from html import escape
+
+import config
 
 from . import chords, tempo
 from .model import ChordEvent, Section, Song, slugify
@@ -80,6 +84,71 @@ def _bars_from_line(line: str) -> list[list[str]]:
     return bars
 
 
+def _chord_columns(line: str) -> tuple[str, list[tuple[int, str]]]:
+    """Return (cleaned_line, [(column, symbol), ...]).
+
+    The column is where the chord visually sits once [ch] tags are removed —
+    i.e. where it lands over the lyric beneath it.
+    """
+    s = line.replace("[tab]", "").replace("[/tab]", "")
+    parts: list[str] = []
+    cols: list[tuple[int, str]] = []
+    pos = col = 0
+    for m in CHORD_TAG_RE.finditer(s):
+        before = s[pos:m.start()]
+        col += len(before)
+        parts.append(before)
+        symbol = m.group(1).strip()
+        cols.append((col, symbol))
+        parts.append(symbol)
+        col += len(symbol)
+        pos = m.end()
+    parts.append(s[pos:])
+    return "".join(parts), cols
+
+
+def _distribute(widths: list[int], total_beats: int) -> list[int]:
+    """Split total_beats among chords proportional to their column widths,
+    quantized to whole beats, each at least 1, summing exactly to total_beats."""
+    n = len(widths)
+    total = max(total_beats, n)          # guarantee >= 1 beat per chord
+    span = sum(widths) or n
+    exact = [w / span * total for w in widths]
+    beats = [max(1, round(x)) for x in exact]
+    while sum(beats) > total:            # trim the currently-largest
+        i = max(range(n), key=lambda k: beats[k])
+        if beats[i] <= 1:
+            break
+        beats[i] -= 1
+    while sum(beats) < total:            # grow the most under-allocated
+        i = max(range(n), key=lambda k: exact[k] - beats[k])
+        beats[i] += 1
+    return beats
+
+
+def _lyric_durations(cols, cleaned_chord: str, lyric: str,
+                     numerator: int) -> list[tuple[str, float]]:
+    """Durations from column spacing over the paired lyric line."""
+    width = max(len(cleaned_chord.rstrip()), len(lyric.rstrip()))
+    positions = [c for c, _ in cols]
+    symbols = [s for _, s in cols]
+    n = len(symbols)
+    widths = [max(1, (positions[i + 1] if i + 1 < n else max(width, positions[i] + 1))
+                  - positions[i]) for i in range(n)]
+    bars = max(1, round(width / config.CHARS_PER_BAR), math.ceil(n / numerator))
+    beats = _distribute(widths, bars * numerator)
+    return list(zip(symbols, (float(b) for b in beats)))
+
+
+def _barline_durations(line: str, numerator: int) -> list[tuple[str, float]]:
+    """One bar per ``|``-delimited group, split evenly among its chords."""
+    out: list[tuple[str, float]] = []
+    for bar_chords in _bars_from_line(line):
+        each = numerator / len(bar_chords)
+        out.extend((sym, each) for sym in bar_chords)
+    return out
+
+
 def to_html(sheet_text: str, transpose: int = 0, prefer_flats: bool = False) -> str:
     """Render a stored ([ch]-tagged) sheet to HTML, optionally transposing chords.
 
@@ -117,7 +186,9 @@ def parse(raw: RawSheet, title: str = "", artist: str = "") -> Song:
         sections.append(current)
         beat_cursor = 0.0
 
-    for line in lines:
+    i = 0
+    while i < len(lines):
+        line = lines[i]
         cleaned = _clean_line(line)
         display = line.replace("[tab]", "").replace("[/tab]", "")  # keep [ch] tags
         header = SECTION_RE.match(cleaned.strip())
@@ -125,23 +196,46 @@ def parse(raw: RawSheet, title: str = "", artist: str = "") -> Song:
             preamble_done = True
             start_section(header.group(1).strip())
             sheet_lines.append(display)
+            i += 1
             continue
-        if has_headers and not preamble_done and "[ch]" not in line:
-            continue  # free-text notes before the first [Section] header
+        if "[ch]" not in line:
+            if not (has_headers and not preamble_done):
+                sheet_lines.append(display)  # lyric / blank line (skip preamble)
+            i += 1
+            continue
+
         sheet_lines.append(display)
-        bars = _bars_from_line(line)
-        if not bars:
-            continue
-        if current is None:
-            start_section("Song")
-        for bar_chords in bars:
-            beats_each = numerator / len(bar_chords)
-            for symbol in bar_chords:
+        cleaned_chord, cols = _chord_columns(line)
+
+        # A following non-chord, non-header, non-blank line is this line's lyric
+        # (its length/columns tell us how long each chord is held).
+        lyric = None
+        if i + 1 < len(lines):
+            nxt = lines[i + 1]
+            nxt_clean = _clean_line(nxt)
+            if nxt.strip() and "[ch]" not in nxt and not SECTION_RE.match(nxt_clean.strip()):
+                lyric = nxt_clean
+
+        if "|" in cleaned_chord:
+            events = _barline_durations(line, numerator)
+        elif lyric is not None:
+            events = _lyric_durations(cols, cleaned_chord, lyric, numerator)
+        else:
+            events = [(sym, float(numerator)) for _, sym in cols]  # one bar each
+
+        if events:
+            if current is None:
+                start_section("Song")
+            for symbol, dur in events:
                 current.chords.append(
-                    ChordEvent(symbol=symbol, beat=beat_cursor,
-                               duration_beats=beats_each)
-                )
-                beat_cursor += beats_each
+                    ChordEvent(symbol=symbol, beat=beat_cursor, duration_beats=dur))
+                beat_cursor += dur
+
+        if lyric is not None:
+            sheet_lines.append(lyric)
+            i += 2  # consume the lyric line too
+        else:
+            i += 1
 
     for section in sections:
         total_beats = sum(ev.duration_beats for ev in section.chords)

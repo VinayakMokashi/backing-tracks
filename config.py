@@ -75,6 +75,11 @@ GETSONGBPM_TIMEOUT_S = 2.0
 HOST = "127.0.0.1"
 PORT = 8765
 
+# Timing inference: how many characters of chord-over-lyric width map to one
+# bar. Lower = more bars per line (chords change faster). This is the main knob
+# for how well durations track a song's real harmonic rhythm; tune to taste.
+CHARS_PER_BAR = 20
+
 
 def ensure_dirs() -> None:
     for d in (CACHE_DIR, SONGS_DIR, RENDERS_DIR):

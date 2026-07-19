@@ -46,6 +46,28 @@ def test_barline_bar_grouping():
     assert bar1[2].symbol == "Am" and bar1[2].duration_beats == 4.0
 
 
+def test_column_spacing_drives_durations():
+    # C spans many columns over the lyric; G is bunched at the end -> C is held
+    # longer. This is the fix for timing drift.
+    raw = RawSheet(
+        content="[Verse]\n[ch]C[/ch]                       [ch]G[/ch]\n"
+                "One long stretched-out phrase here\n",
+        meta={}, applicature=None, source="paste", url=None,
+    )
+    song = sheet_parser.parse(raw)
+    dur = {c.symbol: c.duration_beats for c in song.sections[0].chords}
+    assert dur["C"] > dur["G"]
+
+
+def test_chord_only_line_is_one_bar_each():
+    raw = RawSheet(
+        content="[Intro]\n[ch]Em[/ch]   [ch]G[/ch]   [ch]D[/ch]   [ch]A[/ch]\n",
+        meta={}, applicature=None, source="paste", url=None,
+    )
+    song = sheet_parser.parse(raw)
+    assert [c.duration_beats for c in song.sections[0].chords] == [4.0, 4.0, 4.0, 4.0]
+
+
 def test_paste_wraps_bare_chords_and_keeps_lyrics():
     chart = "[Verse]\nC        G       Am      F\nToday is gonna be the day\n"
     wrapped = sheet_parser.wrap_bare_chords(chart)
