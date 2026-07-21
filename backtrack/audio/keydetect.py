@@ -39,7 +39,14 @@ def detect_key(wav_path: Path, max_seconds: float = 150.0) -> dict:
     y, sr = librosa.load(str(wav_path), mono=True, duration=max_seconds)
     if y.size == 0:
         raise ValueError("empty audio")
-    y = librosa.effects.harmonic(y)  # de-emphasise drums/percussion
+
+    try:  # tempo estimate on the full signal (needs the percussive content)
+        bpm = round(float(np.atleast_1d(
+            librosa.feature.rhythm.tempo(y=y, sr=sr))[0]))
+    except Exception:  # noqa: BLE001 — best-effort
+        bpm = 0
+
+    y = librosa.effects.harmonic(y)  # de-emphasise drums/percussion for key
     chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
     profile = chroma.mean(axis=1)
 
@@ -61,6 +68,7 @@ def detect_key(wav_path: Path, max_seconds: float = 150.0) -> dict:
         "pitch_class": tonic,
         "minor": minor,
         "key": key_name(tonic, minor),
+        "bpm": bpm,
         "score": round(score, 3),
         "confidence": "high" if margin > 0.06 else "medium" if margin > 0.02 else "low",
     }

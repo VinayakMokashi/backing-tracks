@@ -48,6 +48,9 @@ async function analyze() {
     $("track-title").textContent = meta.title || "Track";
     $("detected-key").textContent = meta.key;
     $("detected-conf").textContent = meta.confidence + " confidence";
+    $("detected-bpm").textContent = meta.bpm ? ` · ~${meta.bpm} BPM` : "";
+    $("tempo").value = 100;
+    updateSpeed();
     buildTargets(meta);
     $("keys").classList.remove("hidden");
     $("result").classList.add("hidden");
@@ -81,6 +84,13 @@ function updateShift() {
     n === 0 ? "no change" : `${n > 0 ? "+" : ""}${n} semitone${Math.abs(n) === 1 ? "" : "s"}`;
 }
 
+function updateSpeed() {
+  const pct = parseInt($("tempo").value, 10);
+  const bpm = state.meta && state.meta.bpm;
+  const bpmTxt = bpm ? `  (~${Math.round(bpm * pct / 100)} BPM)` : "";
+  $("speed-readout").textContent = `${pct}%${bpmTxt}`;
+}
+
 async function make() {
   const btn = $("make");
   if (btn.disabled) return;
@@ -89,9 +99,13 @@ async function make() {
   $("make-status").classList.add("spin");
   try {
     const targetName = KEY_NAMES[parseInt($("target").value, 10)].split("/")[0];
-    const r = await api("/api/audio/transpose", { id: state.meta.id, target: targetName });
-    $("result-meta").textContent =
-      `${r.from_key} → ${r.to_key}  (${r.semitones > 0 ? "+" : ""}${r.semitones} semitones)`;
+    const tempoPct = parseInt($("tempo").value, 10);
+    const r = await api("/api/audio/transpose",
+      { id: state.meta.id, target: targetName, tempo_pct: tempoPct });
+    const shiftTxt = `${r.from_key} → ${r.to_key}  (${r.semitones > 0 ? "+" : ""}${r.semitones} semitones)`;
+    const speedTxt = r.tempo_pct === 100 ? "" :
+      `  ·  ${r.tempo_pct}% speed${r.target_bpm ? ` (~${r.target_bpm} BPM)` : ""}`;
+    $("result-meta").textContent = shiftTxt + speedTxt;
     $("player").src = r.audio_url;
     $("dl").href = r.audio_url;
     $("result").classList.remove("hidden");
@@ -108,4 +122,5 @@ async function make() {
 $("analyze").onclick = analyze;
 $("url").addEventListener("keydown", (e) => { if (e.key === "Enter") analyze(); });
 $("target").onchange = updateShift;
+$("tempo").oninput = updateSpeed;
 $("make").onclick = make;

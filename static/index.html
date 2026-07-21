@@ -32,13 +32,17 @@
   <section id="keys" class="card hidden">
     <h2 id="track-title"></h2>
     <p class="muted">Detected key:
-      <b id="detected-key"></b> <span id="detected-conf" class="badge"></span></p>
+      <b id="detected-key"></b> <span id="detected-conf" class="badge"></span>
+      <span id="detected-bpm"></span></p>
     <div class="grid">
       <label>Sing it in
         <select id="target"></select>
       </label>
       <label>Shift
         <div class="stepper"><span id="shift-readout">—</span></div>
+      </label>
+      <label>Speed <span id="speed-readout" class="muted"></span>
+        <input id="tempo" type="range" min="50" max="150" step="1" value="100">
       </label>
     </div>
     <div class="row">

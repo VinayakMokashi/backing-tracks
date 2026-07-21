@@ -12,8 +12,11 @@ real recording, it actually *sounds* like the track.
    Slow on CPU (a few minutes/song; first run also downloads the model). Uncheck
    "Remove vocals" if the video is already an instrumental/karaoke track.
 3. **Detects the key** and tells you (an estimate — correct it if it's off).
-4. **Pick the key you sing in** → it pitch-shifts (ffmpeg's rubberband, high
-   quality, tempo preserved) and gives you an MP3 to play and download.
+4. **Pick the key you sing in, and (optionally) the speed** → it pitch-shifts
+   and time-stretches in one rubberband pass (pitch and tempo are independent —
+   changing one never affects the other) and gives you an MP3 to play/download.
+   The track's estimated BPM is shown as a reference; the speed slider (50–150%)
+   updates the resulting BPM live.
 
 Small shifts stay clean; it always takes the shorter direction (≤ 6 semitones).
 Vocal removal is very good but not perfect — some tracks leave faint ghosts.

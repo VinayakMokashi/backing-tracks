@@ -64,7 +64,7 @@ def analyze(url: str, remove_vocals: bool = True) -> dict:
     return meta
 
 
-def transpose(sid: str, target_pc: int) -> dict:
+def transpose(sid: str, target_pc: int, tempo_pct: int = 100) -> dict:
     folder = AUDIO_DIR / sid
     src = folder / "source.wav"
     meta_path = folder / "meta.json"
@@ -73,12 +73,17 @@ def transpose(sid: str, target_pc: int) -> dict:
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
 
     semis = pitch.shortest_shift(meta["pitch_class"], target_pc)
-    out = folder / f"key_{target_pc}.mp3"
+    tempo = tempo_pct / 100.0
+    out = folder / f"key_{target_pc}_t{tempo_pct}.mp3"
     if not out.exists():
-        pitch.shift_semitones(src, out, semis, to_mp3=True)
+        pitch.transform(src, out, semitones=semis, tempo=tempo, to_mp3=True)
+
+    src_bpm = meta.get("bpm") or 0
     return {
         "audio_url": f"/audio/{sid}/{out.name}",
         "semitones": semis,
         "from_key": keydetect.key_name(meta["pitch_class"], meta["minor"]),
         "to_key": keydetect.key_name(target_pc, meta["minor"]),
+        "tempo_pct": tempo_pct,
+        "target_bpm": round(src_bpm * tempo) if src_bpm else 0,
     }

@@ -25,19 +25,20 @@ def shortest_shift(from_pc: int, to_pc: int) -> int:
     return d - 12 if d > 6 else d
 
 
-def shift_semitones(in_path: Path, out_path: Path, semitones: float,
-                    to_mp3: bool = False) -> Path:
-    if abs(semitones) < 1e-6:
-        # no shift: still transcode so callers get a consistent output file
-        ratio = 1.0
-    else:
-        ratio = 2.0 ** (semitones / 12.0)
+def transform(in_path: Path, out_path: Path, semitones: float = 0.0,
+              tempo: float = 1.0, to_mp3: bool = False) -> Path:
+    """Pitch-shift by `semitones` and/or time-stretch by `tempo` (1.0 = original
+    speed, 1.1 = 10% faster, 0.9 = slower) in one rubberband pass — pitch and
+    tempo stay independent of each other."""
+    pitch_ratio = 2.0 ** (semitones / 12.0) if abs(semitones) > 1e-6 else 1.0
+    tempo_ratio = tempo if abs(tempo - 1.0) > 1e-6 else 1.0
 
     # Keep the real extension on the temp file so ffmpeg infers the format.
     tmp = out_path.with_name(f"{out_path.stem}.part{out_path.suffix}")
     fmt = "mp3" if to_mp3 else "wav"
-    cmd = [config.FFMPEG_EXE, "-y", "-i", str(in_path),
-           "-af", f"rubberband=pitch={ratio:.6f}:pitchq=quality", "-f", fmt]
+    af = (f"rubberband=pitch={pitch_ratio:.6f}:tempo={tempo_ratio:.6f}"
+          ":pitchq=quality")
+    cmd = [config.FFMPEG_EXE, "-y", "-i", str(in_path), "-af", af, "-f", fmt]
     if to_mp3:
         cmd += ["-codec:a", "libmp3lame", "-b:a", "192k"]
     cmd += [str(tmp)]

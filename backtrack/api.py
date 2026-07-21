@@ -159,6 +159,7 @@ class AnalyzeRequest(BaseModel):
 class TransposeRequest(BaseModel):
     id: str
     target: str
+    tempo_pct: int = Field(default=100, ge=50, le=150)
 
 
 @app.post("/api/audio/analyze")
@@ -180,7 +181,7 @@ def audio_transpose(req: TransposeRequest):
         return _error(422, "bad_key", str(exc),
                       "Use a note like G, F#, Bb, Em.")
     try:
-        return audio_pipeline.transpose(req.id, target_pc)
+        return audio_pipeline.transpose(req.id, target_pc, req.tempo_pct)
     except FileNotFoundError:
         return _error(404, "not_found", "That track hasn't been analysed yet.",
                       "Paste the link and Analyze first.")
