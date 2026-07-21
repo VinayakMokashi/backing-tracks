@@ -1,4 +1,4 @@
-"""Make the project root importable so tests can `import config` / `backtrack`."""
+"""Make the project root importable so tests can `import config` / `keyshift`."""
 import sys
 from pathlib import Path
 

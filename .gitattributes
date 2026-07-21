@@ -1,6 +1,2 @@
 * text=auto eol=lf
 *.bat text eol=crlf
-*.sf2 binary
-*.wav binary
-*.mp3 binary
-*.mid binary

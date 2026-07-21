@@ -1,4 +1,4 @@
-"""Download a YouTube (or other) video's audio track to WAV via yt-dlp+ffmpeg."""
+"""Download a YouTube/Instagram video's audio to WAV via yt-dlp + ffmpeg."""
 from __future__ import annotations
 
 import os
@@ -21,11 +21,10 @@ def _ffmpeg_dir() -> str | None:
     return None  # on PATH
 
 
-def download_audio(url: str, out_dir: Path, basename: str = "source") -> tuple[Path, str]:
-    """Download best audio for `url` and extract it to <out_dir>/<basename>.wav.
+def download_audio(url: str, out_dir: Path, basename: str = "raw") -> tuple[Path, str]:
+    """Download best audio for `url` to <out_dir>/<basename>.wav.
 
-    Returns (wav_path, video_title). Personal-use tool: the caller supplies the
-    link; nothing is redistributed.
+    Returns (wav_path, title). Personal-use tool: the caller supplies the link.
     """
     import yt_dlp
 
@@ -40,10 +39,7 @@ def download_audio(url: str, out_dir: Path, basename: str = "source") -> tuple[P
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
-        "postprocessors": [{
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "wav",
-        }],
+        "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "wav"}],
     }
     ff = _ffmpeg_dir()
     if ff:
@@ -58,14 +54,13 @@ def download_audio(url: str, out_dir: Path, basename: str = "source") -> tuple[P
             info = ydl.extract_info(url, download=True)
     except Exception as exc:  # noqa: BLE001 — yt-dlp raises many types
         text = str(exc).lower()
-        needs_login = any(w in text for w in
-                          ("login", "log in", "private", "rate-limit", "rate limit",
-                           "cookies", "empty media response", "restricted"))
-        is_instagram = "instagram.com" in url.lower()
-        if needs_login or is_instagram:
-            hint = ("Instagram usually needs you logged in. Open config.py, set "
-                    "COOKIES_FROM_BROWSER to the browser you're logged into "
-                    "Instagram in (e.g. \"chrome\"), and try again.")
+        needs_login = any(w in text for w in (
+            "login", "log in", "private", "rate-limit", "rate limit",
+            "cookies", "empty media response", "restricted"))
+        if needs_login or "instagram.com" in url.lower():
+            hint = ('Instagram usually needs you logged in. In config.py set '
+                    'COOKIES_FROM_BROWSER to the browser you use for Instagram '
+                    '(e.g. "chrome"), then try again.')
         else:
             hint = "Check the link is a valid, playable video URL."
         raise DownloadError(f"Could not download audio: {exc}", hint) from exc

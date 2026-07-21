@@ -1,7 +1,8 @@
-"""Orchestration: URL -> analyze (download + key) -> transpose to a target key.
+"""Orchestration: URL -> analyze (download, remove vocals, detect key/BPM) ->
+transpose to a target key and speed.
 
 Source audio and outputs live under data/audio/<url-hash>/ so re-transposing to
-a new key never re-downloads.
+a new key/speed never re-downloads or re-separates.
 """
 from __future__ import annotations
 
@@ -12,29 +13,18 @@ from pathlib import Path
 
 import config
 
-from ..chords import NOTE_TO_PC
 from . import download, keydetect, pitch, separate
+from .notes import key_name, parse_note
 
-AUDIO_DIR = config.DATA_DIR / "audio"
-_ROOT_RE = None  # (kept simple; parsing below)
+AUDIO_DIR = config.AUDIO_DIR
 
 
 def source_id(url: str) -> str:
     return hashlib.sha1(url.encode("utf-8")).hexdigest()[:12]
 
 
-def parse_target(note: str) -> tuple[int, bool]:
-    """'G', 'F#', 'Bb', 'Em', 'C#m' -> (pitch_class, is_minor)."""
-    s = note.strip().replace("♯", "#").replace("♭", "b")
-    minor = s.lower().endswith("m") and not s.lower().endswith("maj")
-    root = s[:-1] if minor and len(s) > 1 else s
-    root = root[0].upper() + root[1:]
-    if root not in NOTE_TO_PC:
-        raise ValueError(f"Unrecognised key: {note!r}")
-    return NOTE_TO_PC[root], minor
-
-
 def analyze(url: str, remove_vocals: bool = True) -> dict:
+    """Download the audio, optionally remove vocals, and estimate key + BPM."""
     sid = source_id(url)
     folder = AUDIO_DIR / sid
     meta_path = folder / "meta.json"
@@ -43,8 +33,7 @@ def analyze(url: str, remove_vocals: bool = True) -> dict:
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         if meta.get("vocals_removed") == remove_vocals:
             return meta
-        # Setting changed: rebuild source + drop stale transposes.
-        for old in folder.glob("key_*.mp3"):
+        for old in folder.glob("key_*.mp3"):  # setting changed -> drop stale outputs
             old.unlink(missing_ok=True)
 
     raw, title = download.download_audio(url, folder, "raw")
@@ -65,6 +54,7 @@ def analyze(url: str, remove_vocals: bool = True) -> dict:
 
 
 def transpose(sid: str, target_pc: int, tempo_pct: int = 100) -> dict:
+    """Pitch-shift the (vocals-removed) source to `target_pc` and `tempo_pct`."""
     folder = AUDIO_DIR / sid
     src = folder / "source.wav"
     meta_path = folder / "meta.json"
@@ -82,8 +72,12 @@ def transpose(sid: str, target_pc: int, tempo_pct: int = 100) -> dict:
     return {
         "audio_url": f"/audio/{sid}/{out.name}",
         "semitones": semis,
-        "from_key": keydetect.key_name(meta["pitch_class"], meta["minor"]),
-        "to_key": keydetect.key_name(target_pc, meta["minor"]),
+        "from_key": key_name(meta["pitch_class"], meta["minor"]),
+        "to_key": key_name(target_pc, meta["minor"]),
         "tempo_pct": tempo_pct,
         "target_bpm": round(src_bpm * tempo) if src_bpm else 0,
     }
+
+
+def parse_target(note: str) -> tuple[int, bool]:
+    return parse_note(note)

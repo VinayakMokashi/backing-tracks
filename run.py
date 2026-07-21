@@ -1,4 +1,4 @@
-"""Launch the backing-track server and open the browser."""
+"""Launch the Key Shifter server and open the browser."""
 import threading
 import webbrowser
 
@@ -14,4 +14,4 @@ def _open_browser() -> None:
 if __name__ == "__main__":
     config.ensure_dirs()
     threading.Timer(1.5, _open_browser).start()
-    uvicorn.run("backtrack.api:app", host=config.HOST, port=config.PORT)
+    uvicorn.run("keyshift.api:app", host=config.HOST, port=config.PORT)

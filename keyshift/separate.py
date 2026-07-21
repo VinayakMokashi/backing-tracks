@@ -9,6 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import config
+
 
 class SeparateError(Exception):
     def __init__(self, message: str, hint: str = ""):
@@ -23,7 +25,8 @@ def separate_instrumental(in_wav: Path, work_dir: Path) -> Path:
     cmd = [sys.executable, "-m", "demucs", "--two-stems", "vocals",
            "-d", "cpu", "-o", str(work_dir), str(in_wav)]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              timeout=config.PROCESS_TIMEOUT_S)
     except subprocess.TimeoutExpired as exc:
         raise SeparateError("Vocal removal timed out.",
                             "Try a shorter clip.") from exc
