@@ -73,6 +73,14 @@ USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 )
+
+# Some sites (especially Instagram) require you to be logged in to download.
+# If a link fails with a login/private error, set COOKIES_FROM_BROWSER to the
+# browser you're logged into that site in — yt-dlp reuses those cookies.
+# e.g. "chrome", "edge", "firefox", "brave". Or export a cookies.txt and point
+# COOKIES_FILE at it. Leave both None for anonymous (YouTube usually works).
+COOKIES_FROM_BROWSER: str | None = None
+COOKIES_FILE: str | None = None
 FETCH_MIN_INTERVAL_S = 1.0  # politeness: at most one outbound fetch per second
 
 # Optional GetSongBPM auto-tempo lookup (getsongbpm.com/api). Best-effort only:

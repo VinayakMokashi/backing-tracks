@@ -7,7 +7,10 @@ real recording, it actually *sounds* like the track.
 
 ## How it works
 
-1. **Paste a link** → the app downloads the audio (yt-dlp).
+1. **Paste a link** (YouTube or Instagram) → the app downloads the audio (yt-dlp).
+   Instagram usually requires being logged in: if a reel fails with a
+   login/private error, set `COOKIES_FROM_BROWSER` in `config.py` to the browser
+   you're logged into Instagram in (e.g. `"chrome"`) and try again.
 2. **Removes the vocals** (Demucs AI) → leaves the instrumental backing track.
    Slow on CPU (a few minutes/song; first run also downloads the model). Uncheck
    "Remove vocals" if the video is already an instrumental/karaoke track.

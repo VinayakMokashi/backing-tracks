@@ -48,15 +48,27 @@ def download_audio(url: str, out_dir: Path, basename: str = "source") -> tuple[P
     ff = _ffmpeg_dir()
     if ff:
         opts["ffmpeg_location"] = ff
+    if config.COOKIES_FILE and Path(config.COOKIES_FILE).exists():
+        opts["cookiefile"] = str(config.COOKIES_FILE)
+    elif config.COOKIES_FROM_BROWSER:
+        opts["cookiesfrombrowser"] = (config.COOKIES_FROM_BROWSER,)
 
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=True)
     except Exception as exc:  # noqa: BLE001 — yt-dlp raises many types
-        raise DownloadError(
-            f"Could not download audio: {exc}",
-            "Check the link is a valid, playable video URL.",
-        ) from exc
+        text = str(exc).lower()
+        needs_login = any(w in text for w in
+                          ("login", "log in", "private", "rate-limit", "rate limit",
+                           "cookies", "empty media response", "restricted"))
+        is_instagram = "instagram.com" in url.lower()
+        if needs_login or is_instagram:
+            hint = ("Instagram usually needs you logged in. Open config.py, set "
+                    "COOKIES_FROM_BROWSER to the browser you're logged into "
+                    "Instagram in (e.g. \"chrome\"), and try again.")
+        else:
+            hint = "Check the link is a valid, playable video URL."
+        raise DownloadError(f"Could not download audio: {exc}", hint) from exc
 
     if not wav.exists():
         raise DownloadError("Audio extraction produced no WAV file.",
