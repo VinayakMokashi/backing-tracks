@@ -13,7 +13,14 @@ RENDERS_DIR = DATA_DIR / "renders"
 STATIC_DIR = PROJECT_ROOT / "static"
 FIXTURES_DIR = PROJECT_ROOT / "tests" / "fixtures"
 
-SOUNDFONT = PROJECT_ROOT / "assets" / "soundfonts" / "GeneralUser-GS.sf2"
+_SF_DIR = PROJECT_ROOT / "assets" / "soundfonts"
+SOUNDFONT = _SF_DIR / "GeneralUser-GS.sf2"          # General MIDI (mixed / drums / fallback)
+PIANO_SOUNDFONT = _SF_DIR / "Abbey-Steinway-D.sf2"  # real-sampled Steinway (solo piano)
+GUITAR_SOUNDFONT = _SF_DIR / "Nylon-Steel-Guitars.sf2"  # real-sampled guitars (solo guitar)
+
+# The dedicated guitar font isn't GM-mapped, so remap GM programs to its presets:
+# 24 (nylon) -> 0 "Nylon Pro Guitar", 25 (steel) -> 3 "Steel Guitar".
+GUITAR_SF_PROGRAMS = {24: 0, 25: 3}
 
 
 def _find_fluidsynth() -> Path | None:
@@ -48,16 +55,18 @@ SAMPLE_RATE = 44100
 GAIN = 0.6
 RENDER_TIMEOUT_S = 120
 
-# GeneralUser GS author's recommended FluidSynth reverb/chorus settings.
+# Chorus OFF — it adds the detuned synthetic "shimmer" that reads as cheap MIDI
+# on a solo instrument. Gentle reverb only, and high polyphony so a sustained
+# piano (pedal + release/resonance samples) never drops voices. These settings
+# are what let the real-sampled fonts actually sound natural.
 FLUIDSYNTH_SETTINGS = {
+    "synth.chorus.active": "0",
+    "synth.reverb.active": "1",
     "synth.reverb.damp": "0.3",
-    "synth.reverb.level": "0.7",
-    "synth.reverb.room-size": "0.5",
+    "synth.reverb.level": "0.5",
+    "synth.reverb.room-size": "0.6",
     "synth.reverb.width": "0.8",
-    "synth.chorus.depth": "3.6",
-    "synth.chorus.level": "0.55",
-    "synth.chorus.nr": "4",
-    "synth.chorus.speed": "0.36",
+    "synth.polyphony": "512",
 }
 
 USER_AGENT = (

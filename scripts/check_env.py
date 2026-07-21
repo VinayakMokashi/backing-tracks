@@ -49,8 +49,20 @@ def main() -> int:
         f"Download {FLUIDSYNTH_URL} and extract into tools\\fluidsynth\\",
     )
     all_ok &= report(
-        "SoundFont", env["soundfont"], str(config.SOUNDFONT),
+        "SoundFont (GM)", env["soundfont"], str(config.SOUNDFONT),
         f"Download {SOUNDFONT_URL} into assets\\soundfonts\\",
+    )
+    report(
+        "Piano font (real, optional)", config.PIANO_SOUNDFONT.exists(),
+        config.PIANO_SOUNDFONT.name if config.PIANO_SOUNDFONT.exists()
+        else "missing — solo piano falls back to the GM sound",
+        "See README 'SoundFonts' (Abbey-Steinway-D) for natural solo piano.",
+    )
+    report(
+        "Guitar font (real, optional)", config.GUITAR_SOUNDFONT.exists(),
+        config.GUITAR_SOUNDFONT.name if config.GUITAR_SOUNDFONT.exists()
+        else "missing — solo guitar falls back to the GM sound",
+        "See README 'SoundFonts' (Nylon-Steel-Guitars) for natural solo guitar.",
     )
     report(
         "ffmpeg (optional)", env["ffmpeg"],

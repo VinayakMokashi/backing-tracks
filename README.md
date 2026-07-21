@@ -19,10 +19,16 @@ Full design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
    [fluidsynth-v2.5.6-win10-x64-cpp11.zip](https://github.com/FluidSynth/fluidsynth/releases/download/v2.5.6/fluidsynth-v2.5.6-win10-x64-cpp11.zip)
    and extract into `tools\fluidsynth\` (if the cpp11 build misbehaves, use the
    `-glib` flavor from the same release page).
-3. **SoundFont** — download
-   [GeneralUser-GS.sf2](https://raw.githubusercontent.com/mrbumpy409/GeneralUser-GS/main/GeneralUser-GS.sf2)
-   into `assets\soundfonts\` (free for any use; we host our own copy per its
-   license — see the [GeneralUser GS project](https://github.com/mrbumpy409/GeneralUser-GS)).
+3. **SoundFonts** — download into `assets\soundfonts\`:
+   - [GeneralUser-GS.sf2](https://raw.githubusercontent.com/mrbumpy409/GeneralUser-GS/main/GeneralUser-GS.sf2)
+     — General MIDI bank, used for mixed/drum renders and as fallback.
+   - **Real piano** (solo-piano renders): [Abbey-Steinway-D-v1.9.sf2](https://huggingface.co/datasets/projectlosangeles/soundfonts4u/resolve/main/Abbey-Steinway-D-v1.9.sf2)
+     → save as `Abbey-Steinway-D.sf2` (a real Steinway sampled in a church; ~40 MB).
+   - **Real guitar** (solo-guitar renders): [Nylon and Steeel Guitars-4U-v2.sf2](https://huggingface.co/datasets/projectlosangeles/soundfonts4u/resolve/main/Nylon%20and%20Steeel%20Guitars-4U-v2.sf2)
+     → save as `Nylon-Steel-Guitars.sf2` (~37 MB).
+
+   The dedicated piano/guitar fonts are what make solo renders sound natural
+   rather than "MIDI"; the app falls back to GeneralUser GS if they're absent.
 4. **ffmpeg** (optional, enables MP3 downloads) —
    `winget install -e --id Gyan.FFmpeg`
 5. Verify: `.venv\Scripts\python.exe scripts\check_env.py` → ALL GREEN

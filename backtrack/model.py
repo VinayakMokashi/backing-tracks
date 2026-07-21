@@ -104,8 +104,13 @@ def song_from_dict(d: dict) -> Song:
     )
 
 
+# Bump when the render pipeline changes (soundfonts, fx) so old cached audio
+# under an unchanged options set is not served for a now-different sound.
+_RENDER_VERSION = 2
+
+
 def options_hash(song: Song, opts: RenderOptions) -> str:
-    """sha1 of (song content + resolved opts) -> render cache key.
+    """sha1 of (song content + resolved opts + engine version) -> cache key.
 
     A hash hit skips arrange AND render — previously heard keys replay
     instantly.
@@ -113,5 +118,5 @@ def options_hash(song: Song, opts: RenderOptions) -> str:
     resolved = asdict(opts)
     resolved["style"] = opts.style or song.style
     resolved["bpm"] = opts.bpm or song.bpm
-    blob = json.dumps([song_to_dict(song), resolved], sort_keys=True)
+    blob = json.dumps([song_to_dict(song), resolved, _RENDER_VERSION], sort_keys=True)
     return hashlib.sha1(blob.encode("utf-8")).hexdigest()[:16]

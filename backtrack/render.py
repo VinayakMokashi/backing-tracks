@@ -32,24 +32,47 @@ class RenderResult:
     seconds: float
 
 
-def _fluidsynth_cmd(mid_path: Path, wav_path: Path) -> list[str]:
+def _fluidsynth_cmd(mid_path: Path, wav_path: Path, soundfont: Path) -> list[str]:
     cmd = [str(config.FLUIDSYNTH_EXE), "-ni",
            "-g", str(config.GAIN), "-r", str(config.SAMPLE_RATE)]
     for key, value in config.FLUIDSYNTH_SETTINGS.items():
         cmd += ["-o", f"{key}={value}"]
-    cmd += ["-T", "wav", "-F", str(wav_path), str(config.SOUNDFONT), str(mid_path)]
+    cmd += ["-T", "wav", "-F", str(wav_path), str(soundfont), str(mid_path)]
     return cmd
 
 
-def render(pm: pretty_midi.PrettyMIDI, song_id: str, ohash: str) -> RenderResult:
+def plan_soundfont(pm: pretty_midi.PrettyMIDI) -> Path:
+    """Pick the best SoundFont for what's in this arrangement, and remap
+    programs when routing through a dedicated (non-GM) font.
+
+    Solo piano  -> real Steinway;  solo guitar -> real guitar bank (programs
+    remapped to its presets); anything mixed or with drums -> the GM bank so
+    every instrument (incl. the count-in click) still sounds.
+    """
+    voiced = [i for i in pm.instruments if i.notes]
+    names = {i.name for i in voiced}
+    has_drums = any(i.is_drum for i in voiced)
+    if names == {"Piano"} and config.PIANO_SOUNDFONT.exists():
+        return config.PIANO_SOUNDFONT
+    if names == {"Guitar"} and not has_drums and config.GUITAR_SOUNDFONT.exists():
+        for inst in voiced:
+            inst.program = config.GUITAR_SF_PROGRAMS.get(inst.program, 0)
+        return config.GUITAR_SOUNDFONT
+    return config.SOUNDFONT
+
+
+def render(pm: pretty_midi.PrettyMIDI, song_id: str, ohash: str,
+           soundfont: Path | None = None) -> RenderResult:
     if config.FLUIDSYNTH_EXE is None:
         raise RenderError(
             "fluidsynth.exe not found under tools/",
             "Run scripts/check_env.py for setup instructions.",
         )
-    if not config.SOUNDFONT.exists():
+    if soundfont is None:
+        soundfont = plan_soundfont(pm)
+    if not soundfont.exists():
         raise RenderError(
-            f"SoundFont missing: {config.SOUNDFONT}",
+            f"SoundFont missing: {soundfont}",
             "Run scripts/check_env.py for setup instructions.",
         )
 
@@ -63,7 +86,7 @@ def render(pm: pretty_midi.PrettyMIDI, song_id: str, ohash: str) -> RenderResult
     pm.write(str(mid_path))
     try:
         proc = subprocess.run(
-            _fluidsynth_cmd(mid_path, wav_tmp),
+            _fluidsynth_cmd(mid_path, wav_tmp, soundfont),
             capture_output=True, text=True, timeout=config.RENDER_TIMEOUT_S,
         )
     except subprocess.TimeoutExpired:
