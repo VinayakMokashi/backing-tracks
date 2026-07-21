@@ -7,12 +7,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 from pathlib import Path
 
 import config
 
 from ..chords import NOTE_TO_PC
-from . import download, keydetect, pitch
+from . import download, keydetect, pitch, separate
 
 AUDIO_DIR = config.DATA_DIR / "audio"
 _ROOT_RE = None  # (kept simple; parsing below)
@@ -33,17 +34,32 @@ def parse_target(note: str) -> tuple[int, bool]:
     return NOTE_TO_PC[root], minor
 
 
-def analyze(url: str) -> dict:
+def analyze(url: str, remove_vocals: bool = True) -> dict:
     sid = source_id(url)
     folder = AUDIO_DIR / sid
     meta_path = folder / "meta.json"
     src = folder / "source.wav"
     if src.exists() and meta_path.exists():
-        return json.loads(meta_path.read_text(encoding="utf-8"))
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        if meta.get("vocals_removed") == remove_vocals:
+            return meta
+        # Setting changed: rebuild source + drop stale transposes.
+        for old in folder.glob("key_*.mp3"):
+            old.unlink(missing_ok=True)
 
-    wav, title = download.download_audio(url, folder, "source")
-    detected = keydetect.detect_key(wav)
-    meta = {"id": sid, "url": url, "title": title, **detected}
+    raw, title = download.download_audio(url, folder, "raw")
+    if remove_vocals:
+        instrumental = separate.separate_instrumental(raw, folder / "sep")
+        shutil.move(str(instrumental), str(src))
+        shutil.rmtree(folder / "sep", ignore_errors=True)
+    else:
+        shutil.move(str(raw), str(src))
+    for leftover in folder.glob("raw.*"):
+        leftover.unlink(missing_ok=True)
+
+    detected = keydetect.detect_key(src)
+    meta = {"id": sid, "url": url, "title": title,
+            "vocals_removed": remove_vocals, **detected}
     meta_path.write_text(json.dumps(meta), encoding="utf-8")
     return meta
 

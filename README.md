@@ -1,22 +1,22 @@
 # Backing Track — Key Shifter
 
-Paste a YouTube link (an instrumental / karaoke / backing-track video), and get
-that **real audio** shifted into **your** key to sing over. It downloads the
-audio, estimates its musical key, and pitch-shifts it — without changing tempo.
-
-Because it uses the real recording's audio, it actually *sounds* like the track
-(unlike generating instruments from chords). It transposes whatever is in the
-video — it does **not** remove vocals, so pick an instrumental/karaoke video if
-you want a clean bed.
+Paste a YouTube link and get the **backing track** (vocals removed) shifted into
+**your** key to sing over. It downloads the audio, removes the vocals, estimates
+the key, and pitch-shifts it — without changing tempo. Because it starts from the
+real recording, it actually *sounds* like the track.
 
 ## How it works
 
 1. **Paste a link** → the app downloads the audio (yt-dlp).
-2. **It detects the key** and tells you (an estimate — correct it if it's off).
-3. **Pick the key you sing in** → it pitch-shifts the audio (ffmpeg's rubberband,
-   high quality, tempo preserved) and gives you an MP3 to play and download.
+2. **Removes the vocals** (Demucs AI) → leaves the instrumental backing track.
+   Slow on CPU (a few minutes/song; first run also downloads the model). Uncheck
+   "Remove vocals" if the video is already an instrumental/karaoke track.
+3. **Detects the key** and tells you (an estimate — correct it if it's off).
+4. **Pick the key you sing in** → it pitch-shifts (ffmpeg's rubberband, high
+   quality, tempo preserved) and gives you an MP3 to play and download.
 
 Small shifts stay clean; it always takes the shorter direction (≤ 6 semitones).
+Vocal removal is very good but not perfect — some tracks leave faint ghosts.
 
 ## Setup (Windows 11)
 

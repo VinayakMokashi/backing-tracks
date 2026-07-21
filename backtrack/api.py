@@ -153,6 +153,7 @@ def health():
 
 class AnalyzeRequest(BaseModel):
     url: str
+    remove_vocals: bool = True
 
 
 class TransposeRequest(BaseModel):
@@ -162,13 +163,13 @@ class TransposeRequest(BaseModel):
 
 @app.post("/api/audio/analyze")
 def audio_analyze(req: AnalyzeRequest):
-    """Download a video's audio and estimate its key. Slow (download + analysis);
-    runs in FastAPI's threadpool."""
+    """Download a video's audio, remove vocals (default), and estimate its key.
+    Slow (download + separation + analysis); runs in FastAPI's threadpool."""
     url = req.url.strip()
     if not url:
         return _error(400, "bad_request", "Provide a video URL.",
                       "Paste a YouTube link.")
-    return audio_pipeline.analyze(url)
+    return audio_pipeline.analyze(url, remove_vocals=req.remove_vocals)
 
 
 @app.post("/api/audio/transpose")

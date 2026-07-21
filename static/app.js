@@ -37,10 +37,13 @@ async function analyze() {
   const url = $("url").value.trim();
   if (!url) return;
   btn.disabled = true;
-  status($("status"), "Downloading & analyzing the audio… (can take up to a minute)");
+  const removeVocals = $("remove-vocals").checked;
+  status($("status"), removeVocals
+    ? "Downloading, removing vocals, and analyzing… (a few minutes — the first run also downloads the AI model)"
+    : "Downloading & analyzing the audio… (up to a minute)");
   $("status").classList.add("spin");
   try {
-    const meta = await api("/api/audio/analyze", { url });
+    const meta = await api("/api/audio/analyze", { url, remove_vocals: removeVocals });
     state.meta = meta;
     $("track-title").textContent = meta.title || "Track";
     $("detected-key").textContent = meta.key;
