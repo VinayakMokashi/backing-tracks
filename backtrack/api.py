@@ -21,6 +21,9 @@ from dataclasses import asdict
 
 from . import chords, render, sheet_parser, store
 from .arrange import arrange, plan_capo
+from .audio import pipeline as audio_pipeline
+from .audio.download import DownloadError
+from .audio.pitch import PitchError
 from .model import ChordEvent, RenderOptions, Section, options_hash, song_to_dict
 from .sources import RawSheet, SourceError, get_sheet, search
 
@@ -111,6 +114,16 @@ def _render_error(_request, exc: render.RenderError):
     return _error(500, "render_failed", exc.message, exc.hint)
 
 
+@app.exception_handler(DownloadError)
+def _download_error(_request, exc: DownloadError):
+    return _error(502, "download_failed", exc.message, exc.hint)
+
+
+@app.exception_handler(PitchError)
+def _pitch_error(_request, exc: PitchError):
+    return _error(500, "pitch_failed", exc.message, exc.hint)
+
+
 @app.exception_handler(RequestValidationError)
 def _validation_error(_request, exc: RequestValidationError):
     errs = exc.errors()
@@ -136,6 +149,40 @@ def index():
 @app.get("/api/health")
 def health():
     return render.check_environment()
+
+
+class AnalyzeRequest(BaseModel):
+    url: str
+
+
+class TransposeRequest(BaseModel):
+    id: str
+    target: str
+
+
+@app.post("/api/audio/analyze")
+def audio_analyze(req: AnalyzeRequest):
+    """Download a video's audio and estimate its key. Slow (download + analysis);
+    runs in FastAPI's threadpool."""
+    url = req.url.strip()
+    if not url:
+        return _error(400, "bad_request", "Provide a video URL.",
+                      "Paste a YouTube link.")
+    return audio_pipeline.analyze(url)
+
+
+@app.post("/api/audio/transpose")
+def audio_transpose(req: TransposeRequest):
+    try:
+        target_pc, _ = audio_pipeline.parse_target(req.target)
+    except ValueError as exc:
+        return _error(422, "bad_key", str(exc),
+                      "Use a note like G, F#, Bb, Em.")
+    try:
+        return audio_pipeline.transpose(req.id, target_pc)
+    except FileNotFoundError:
+        return _error(404, "not_found", "That track hasn't been analysed yet.",
+                      "Paste the link and Analyze first.")
 
 
 @app.get("/api/search")
@@ -281,5 +328,7 @@ def render_song(song_id: str, req: RenderRequest):
     }
 
 
+audio_pipeline.AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=config.STATIC_DIR), name="static")
 app.mount("/media", StaticFiles(directory=config.RENDERS_DIR), name="media")
+app.mount("/audio", StaticFiles(directory=audio_pipeline.AUDIO_DIR), name="audio")

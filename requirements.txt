@@ -1,5 +1,10 @@
+# Audio key-shifter (primary app)
 fastapi>=0.111
 uvicorn[standard]>=0.30
+yt-dlp>=2026.7
+librosa>=0.11
+soundfile>=0.12
+# Chord/MIDI backing-track generator (legacy, still importable)
 requests>=2.32
 beautifulsoup4>=4.12
 pychord>=1.4.0
