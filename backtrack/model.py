@@ -55,6 +55,7 @@ class RenderOptions:            # per-render knobs, applied at arrange time only
     style: str | None = None    # override Song.style
     bpm: float | None = None    # override Song.bpm
     guitar_program: int = 25    # GM byte (0-indexed): 25 steel, 24 nylon
+    guitar_technique: str = "strum"  # 'strum' | 'fingerpick'
     capo_mode: str = "keep"     # 'keep' | 'auto' | 'none'
 
 

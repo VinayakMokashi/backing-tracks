@@ -163,10 +163,17 @@ def arrange(song: Song, opts: RenderOptions) -> pretty_midi.PrettyMIDI:
         t0 = numerator * sec_per_beat
 
     if opts.guitar:
-        pm.instruments.append(guitar.build_track(
-            opts.guitar_program, patterns.STRUM_PATTERNS[strum_name],
-            _chord_at(shape_spans), slots_per_bar, total_bars, sec_per_slot,
-            t0, capo_out, rng))
+        chord_at = _chord_at(shape_spans)
+        if opts.guitar_technique == "fingerpick":
+            pm.instruments.append(guitar.build_fingerpick_track(
+                opts.guitar_program, patterns.fingerpick_pattern(style),
+                chord_at, slots_per_bar, total_bars, sec_per_slot,
+                t0, capo_out, rng))
+        else:
+            pm.instruments.append(guitar.build_track(
+                opts.guitar_program, patterns.STRUM_PATTERNS[strum_name],
+                chord_at, slots_per_bar, total_bars, sec_per_slot,
+                t0, capo_out, rng))
     if opts.piano:
         pm.instruments.append(piano.build_track(
             0, patterns.PIANO_PATTERNS[piano_name], sounding_spans,

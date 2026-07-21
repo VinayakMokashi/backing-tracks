@@ -204,6 +204,7 @@ async function generate() {
       guitar: $("guitar").checked, piano: $("piano").checked,
       drums: $("drums").checked, count_in: $("count-in").checked,
       guitar_program: parseInt($("guitar-program").value, 10),
+      guitar_technique: $("guitar-technique").value,
       capo_mode: $("capo-mode").value,
     } });
     $("player-meta").textContent =

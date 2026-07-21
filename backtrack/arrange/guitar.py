@@ -78,3 +78,42 @@ def build_track(program: int, pattern, chord_at, slots_per_bar: int,
             start = t0 + (bar_start + slot) * sec_per_slot
             emit(inst, event, vel, voicing, start, dur * sec_per_slot, rng)
     return inst
+
+
+def _pluck(voicing: list[int], selector: str) -> int:
+    """Pick one string from a low->high voicing by its fingerpicking role."""
+    v = sorted(voicing)
+    if selector == "b":
+        return v[0]
+    if selector == "b2":
+        return v[1] if len(v) > 1 else v[0]
+    if selector == "t0":
+        return v[-1]
+    if selector == "t1":
+        return v[-2] if len(v) >= 2 else v[-1]
+    if selector == "t2":
+        return v[-3] if len(v) >= 3 else v[-1]
+    return v[0]
+
+
+def build_fingerpick_track(program: int, pattern, chord_at, slots_per_bar: int,
+                           total_bars: int, sec_per_slot: float, t0: float,
+                           capo_out: int, rng: random.Random) -> pretty_midi.Instrument:
+    """Pluck one voicing note per pattern step, letting each ring (legato)."""
+    inst = pretty_midi.Instrument(program=program, name="Guitar")
+    for bar in range(total_bars):
+        bar_start = bar * slots_per_bar
+        for slot, selector, vel, dur in pattern:
+            if slot >= slots_per_bar:
+                continue
+            chord: ParsedChord | None = chord_at(bar_start + slot)
+            if chord is None or chord.is_rest:
+                continue
+            voicing = [n + capo_out for n in
+                       guitar_voicing(chord.root_pc, chord.quality, chord.bass_pc)]
+            pitch = _pluck(voicing, selector)
+            start = t0 + (bar_start + slot) * sec_per_slot
+            inst.notes.append(pretty_midi.Note(
+                velocity=_clamp_vel(vel + rng.randint(-4, 4)), pitch=pitch,
+                start=max(0.0, start), end=start + dur * sec_per_slot))
+    return inst

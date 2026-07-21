@@ -46,6 +46,32 @@ PIANO_PATTERNS: dict[str, list[tuple]] = {
     "arp_68": [(0, "ARP", ["R2", "R2+7", "R2+12", "T3", "R2+12", "R2+7"], 74, 1)],
 }
 
+# Fingerpick events: (slot, selector, velocity, duration_slots)
+# selector picks one note from the chord voicing (sorted low->high):
+#   'b'  = bass (lowest)        'b2' = second-lowest (alternating thumb)
+#   't0' = highest string       't1' = 2nd from top     't2' = 3rd from top
+# Notes ring longer than a slot (legato) — that sustain is what reads as
+# fingerpicking rather than a plucked stab.
+FINGERPICK_PATTERNS: dict[str, list[tuple[float, str, int, float]]] = {
+    # flowing bass -> ascending treble arpeggio, twice per bar (ballad staple)
+    "ballad_44": [(0, "b", 102, 3), (1, "t2", 80, 3), (2, "t1", 84, 3),
+                  (3, "t0", 78, 3), (4, "b2", 94, 3), (5, "t2", 80, 3),
+                  (6, "t1", 84, 3), (7, "t0", 78, 3)],
+    "six_eight_68": [(0, "b", 102, 3), (1, "t2", 78, 2), (2, "t1", 82, 2),
+                     (3, "b2", 92, 3), (4, "t2", 78, 2), (5, "t0", 80, 2)],
+    "waltz_34": [(0, "b", 102, 3), (2, "t1", 82, 2), (4, "t0", 80, 2)],
+}
+
+
+def fingerpick_pattern(style: str) -> list[tuple[float, str, int, float]]:
+    _, _, _, _, ts = STYLES.get(style, STYLES[DEFAULT_STYLE])
+    if ts == (6, 8):
+        return FINGERPICK_PATTERNS["six_eight_68"]
+    if ts == (3, 4):
+        return FINGERPICK_PATTERNS["waltz_34"]
+    return FINGERPICK_PATTERNS["ballad_44"]
+
+
 DRUM_PATTERNS: dict[str, dict] = {
     "pop_44": {"kick": [(0, 36, 100), (4, 36, 96)],
                "snare": [(2, 38, 98), (6, 38, 98)], "hat": "eighths"},

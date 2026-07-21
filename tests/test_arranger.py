@@ -93,6 +93,23 @@ def test_guitar_sus_dim_use_real_tones_not_major_triad():
         assert pcs <= allowed, f"{sym}: {pcs} introduces tones outside {allowed}"
 
 
+def test_fingerpick_is_sparser_single_notes():
+    song = _song()
+    strum = arrange(song, RenderOptions(guitar=True, piano=False, count_in=False,
+                                        style="ballad", guitar_technique="strum"))
+    pick = arrange(song, RenderOptions(guitar=True, piano=False, count_in=False,
+                                       style="ballad", guitar_technique="fingerpick"))
+    g_strum = [i for i in strum.instruments if i.name == "Guitar"][0]
+    g_pick = [i for i in pick.instruments if i.name == "Guitar"][0]
+    # fingerpicking plays one note at a time -> far fewer simultaneous onsets
+    by_start = {}
+    for n in g_pick.notes:
+        by_start.setdefault(round(n.start, 2), 0)
+        by_start[round(n.start, 2)] += 1
+    assert max(by_start.values()) == 1               # never a chord, always single plucks
+    assert len(g_pick.notes) < len(g_strum.notes)    # sparser than strumming
+
+
 def test_resolve_capo_keeps_sounding_invariant():
     for capo in (0, 2, 5):
         for transpose in (-4, 0, 3, 12):

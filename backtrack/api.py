@@ -52,6 +52,7 @@ class RenderRequest(BaseModel):
     style: str | None = None
     bpm: float | None = Field(default=None, gt=0, le=400)
     guitar_program: int = 25
+    guitar_technique: str = "strum"
     capo_mode: str = "keep"
 
 
